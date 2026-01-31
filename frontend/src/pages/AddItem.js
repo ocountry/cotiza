@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -16,20 +17,30 @@ import {
   Loader2,
   Mail,
   MessageCircle,
-  Send
+  Send,
+  Phone,
+  AlertCircle
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function AddItem() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [url, setUrl] = useState('');
   const [method, setMethod] = useState('scraping');
   const [channels, setChannels] = useState(['email']);
-  const [endpoint, setEndpoint] = useState('');
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  // Check which channels are configured
+  const configuredChannels = {
+    email: !!user?.notification_email,
+    whatsapp: !!user?.notification_whatsapp,
+    telegram: !!user?.notification_telegram,
+    sms: !!user?.notification_sms,
+  };
 
   const handlePreview = async () => {
     if (!url.trim()) {
@@ -75,6 +86,12 @@ export default function AddItem() {
       return;
     }
 
+    // Check if selected channels are configured
+    const unconfiguredChannels = channels.filter(ch => !configuredChannels[ch]);
+    if (unconfiguredChannels.length > 0) {
+      toast.warning(`Configure ${unconfiguredChannels.join(', ')} in Settings to receive notifications`);
+    }
+
     setCreating(true);
     
     try {
@@ -86,7 +103,6 @@ export default function AddItem() {
           url,
           extraction_method: method,
           notification_channels: channels,
-          notification_endpoint: endpoint || null,
         }),
       });
       
@@ -114,11 +130,33 @@ export default function AddItem() {
 
   const formatPrice = (price, currency = 'USD') => {
     if (price === null || price === undefined) return 'Not detected';
-    return new Intl.NumberFormat('en-US', {
+    
+    // Format based on currency
+    const currencyConfig = {
+      CLP: { locale: 'es-CL', maximumFractionDigits: 0 },
+      USD: { locale: 'en-US', maximumFractionDigits: 2 },
+      EUR: { locale: 'de-DE', maximumFractionDigits: 2 },
+      MXN: { locale: 'es-MX', maximumFractionDigits: 2 },
+      ARS: { locale: 'es-AR', maximumFractionDigits: 2 },
+    };
+    
+    const config = currencyConfig[currency] || currencyConfig.USD;
+    
+    return new Intl.NumberFormat(config.locale, {
       style: 'currency',
       currency,
+      maximumFractionDigits: config.maximumFractionDigits,
     }).format(price);
   };
+
+  const channelsList = [
+    { id: 'email', icon: Mail, label: 'Email', configured: configuredChannels.email },
+    { id: 'whatsapp', icon: MessageCircle, label: 'WhatsApp', configured: configuredChannels.whatsapp },
+    { id: 'telegram', icon: Send, label: 'Telegram', configured: configuredChannels.telegram },
+    { id: 'sms', icon: Phone, label: 'SMS', configured: configuredChannels.sms },
+  ];
+
+  const hasAnyChannelConfigured = Object.values(configuredChannels).some(Boolean);
 
   return (
     <div className="min-h-screen bg-background">
@@ -240,72 +278,47 @@ export default function AddItem() {
             </CardContent>
           </Card>
 
-          {/* Notification Settings */}
+          {/* Notification Channels */}
           <Card className="bg-card border border-border/50 rounded-sm">
             <CardHeader>
               <CardTitle className="font-heading text-xl">Notification Channels</CardTitle>
+              <CardDescription>
+                Select which channels to notify when the price changes
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Label
-                  className={`flex items-center gap-3 p-4 border rounded-sm cursor-pointer transition-colors ${
-                    channels.includes('email') ? 'border-accent bg-accent/5' : 'border-border'
-                  }`}
-                >
-                  <Checkbox
-                    checked={channels.includes('email')}
-                    onCheckedChange={() => toggleChannel('email')}
-                    data-testid="channel-email"
-                  />
-                  <Mail className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
-                  <span>Email</span>
-                </Label>
-                
-                <Label
-                  className={`flex items-center gap-3 p-4 border rounded-sm cursor-pointer transition-colors ${
-                    channels.includes('whatsapp') ? 'border-accent bg-accent/5' : 'border-border'
-                  }`}
-                >
-                  <Checkbox
-                    checked={channels.includes('whatsapp')}
-                    onCheckedChange={() => toggleChannel('whatsapp')}
-                    data-testid="channel-whatsapp"
-                  />
-                  <MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
-                  <span>WhatsApp</span>
-                </Label>
-                
-                <Label
-                  className={`flex items-center gap-3 p-4 border rounded-sm cursor-pointer transition-colors ${
-                    channels.includes('telegram') ? 'border-accent bg-accent/5' : 'border-border'
-                  }`}
-                >
-                  <Checkbox
-                    checked={channels.includes('telegram')}
-                    onCheckedChange={() => toggleChannel('telegram')}
-                    data-testid="channel-telegram"
-                  />
-                  <Send className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
-                  <span>Telegram</span>
-                </Label>
-              </div>
+            <CardContent className="space-y-4">
+              {!hasAnyChannelConfigured && (
+                <div className="flex items-start gap-3 p-4 bg-warning/10 border border-warning/30 rounded-sm">
+                  <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+                  <div>
+                    <p className="text-sm font-medium">No channels configured</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Go to <Link to="/settings" className="text-accent underline">Settings</Link> to configure your notification accounts (email, WhatsApp, etc.)
+                    </p>
+                  </div>
+                </div>
+              )}
               
-              <div className="space-y-2">
-                <Label htmlFor="endpoint" className="text-sm text-muted-foreground">
-                  Webhook Endpoint (required for notifications)
-                </Label>
-                <Input
-                  id="endpoint"
-                  type="url"
-                  placeholder="https://your-server.com/webhook"
-                  value={endpoint}
-                  onChange={(e) => setEndpoint(e.target.value)}
-                  className="h-12 px-4 rounded-sm bg-background border-border"
-                  data-testid="endpoint-input"
-                />
-                <p className="text-xs text-muted-foreground">
-                  We'll send price change notifications to this endpoint with channel info.
-                </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {channelsList.map((channel) => (
+                  <Label
+                    key={channel.id}
+                    className={`flex flex-col items-center gap-2 p-4 border rounded-sm cursor-pointer transition-colors ${
+                      channels.includes(channel.id) ? 'border-accent bg-accent/5' : 'border-border'
+                    } ${!channel.configured ? 'opacity-60' : ''}`}
+                  >
+                    <Checkbox
+                      checked={channels.includes(channel.id)}
+                      onCheckedChange={() => toggleChannel(channel.id)}
+                      data-testid={`channel-${channel.id}`}
+                    />
+                    <channel.icon className="w-5 h-5 text-muted-foreground" strokeWidth={1.5} />
+                    <span className="text-sm">{channel.label}</span>
+                    {!channel.configured && (
+                      <span className="text-xs text-warning">Not configured</span>
+                    )}
+                  </Label>
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -336,7 +349,10 @@ export default function AddItem() {
                   )}
                 </div>
                 <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                  <span className="text-muted-foreground text-sm">Detected Price</span>
+                  <div>
+                    <span className="text-muted-foreground text-sm block">Detected Price</span>
+                    <span className="text-xs text-muted-foreground">Currency: {preview.currency || 'USD'}</span>
+                  </div>
                   <span className="text-3xl font-heading">
                     {formatPrice(preview.price, preview.currency)}
                   </span>
