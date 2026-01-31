@@ -134,7 +134,7 @@ export default function AddItem() {
   };
 
   const formatPrice = (price, currency = 'USD') => {
-    if (price === null || price === undefined) return 'Not detected';
+    if (price === null || price === undefined) return 'No detectado';
     
     // Format based on currency
     const currencyConfig = {
