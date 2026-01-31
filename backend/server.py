@@ -559,20 +559,107 @@ async def extract_with_scraping(url: str) -> ExtractedData:
 
 
 async def extract_with_api_fallback(url: str) -> ExtractedData:
-    """Fallback extraction using Firecrawl API for sites with anti-bot protection"""
+    """Fallback extraction using Firecrawl API for sites with anti-bot protection.
+    Supports both cloud and self-hosted Firecrawl instances.
+    
+    Environment variables:
+    - FIRECRAWL_MODE: 'cloud' or 'selfhosted' (default: cloud)
+    - FIRECRAWL_API_KEY: API key for cloud version
+    - FIRECRAWL_SELFHOSTED_URL: URL for self-hosted instance (e.g., http://host:3002/v2/scrape)
+    """
     try:
         from urllib.parse import urlparse
-        from firecrawl import FirecrawlApp
         
         domain = urlparse(url).netloc.lower()
         default_currency = "CLP" if '.cl' in domain else "USD"
+        
+        firecrawl_mode = os.environ.get('FIRECRAWL_MODE', 'cloud').lower()
+        
+        if firecrawl_mode == 'selfhosted':
+            # Use self-hosted Firecrawl via HTTP
+            return await extract_with_firecrawl_selfhosted(url, domain, default_currency)
+        else:
+            # Use Firecrawl cloud SDK
+            return await extract_with_firecrawl_cloud(url, domain, default_currency)
+            
+    except Exception as e:
+        logger.error(f"Firecrawl error for {url}: {e}")
+        return ExtractedData()
+
+
+async def extract_with_firecrawl_selfhosted(url: str, domain: str, default_currency: str) -> ExtractedData:
+    """Extract using self-hosted Firecrawl instance"""
+    try:
+        selfhosted_url = os.environ.get('FIRECRAWL_SELFHOSTED_URL')
+        if not selfhosted_url:
+            logger.warning("FIRECRAWL_SELFHOSTED_URL not set, falling back to cloud")
+            return await extract_with_firecrawl_cloud(url, domain, default_currency)
+        
+        logger.info(f"Using Firecrawl SELF-HOSTED for: {domain}")
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                selfhosted_url,
+                json={
+                    "url": url,
+                    "formats": ["markdown"]
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code != 200:
+                logger.warning(f"Firecrawl self-hosted returned status {response.status_code}")
+                return ExtractedData()
+            
+            result = response.json()
+            
+            if not result or not result.get('data'):
+                logger.warning(f"Firecrawl self-hosted returned empty result for {url}")
+                return ExtractedData()
+            
+            data = result.get('data', {})
+            markdown = data.get('markdown', '')
+            metadata = data.get('metadata', {})
+            
+            # Extract title from metadata
+            title = metadata.get('title') or metadata.get('og:title') or metadata.get('ogTitle')
+            if title and '|' in title:
+                title = title.split('|')[0].strip()
+            
+            # Extract description
+            description = metadata.get('description') or metadata.get('og:description') or metadata.get('ogDescription')
+            
+            # Extract image
+            image_url = metadata.get('og:image') or metadata.get('ogImage')
+            
+            # Extract price from markdown content
+            price = extract_price_from_markdown(markdown, default_currency)
+            
+            logger.info(f"Firecrawl SELF-HOSTED extraction: title={title}, price={price}, currency={default_currency}")
+            
+            return ExtractedData(
+                title=title[:200] if title else None,
+                description=description[:500] if description else None,
+                price=price,
+                currency=default_currency,
+                image_url=image_url
+            )
+    except Exception as e:
+        logger.error(f"Firecrawl self-hosted error for {url}: {e}")
+        return ExtractedData()
+
+
+async def extract_with_firecrawl_cloud(url: str, domain: str, default_currency: str) -> ExtractedData:
+    """Extract using Firecrawl cloud SDK"""
+    try:
+        from firecrawl import FirecrawlApp
         
         firecrawl_key = os.environ.get('FIRECRAWL_API_KEY')
         if not firecrawl_key:
             logger.warning("FIRECRAWL_API_KEY not set")
             return ExtractedData()
         
-        logger.info(f"Using Firecrawl for protected site: {domain}")
+        logger.info(f"Using Firecrawl CLOUD for: {domain}")
         
         # Initialize Firecrawl
         app = FirecrawlApp(api_key=firecrawl_key)
@@ -581,7 +668,7 @@ async def extract_with_api_fallback(url: str) -> ExtractedData:
         result = app.scrape(url, formats=['markdown'])
         
         if not result:
-            logger.warning(f"Firecrawl returned empty result for {url}")
+            logger.warning(f"Firecrawl cloud returned empty result for {url}")
             return ExtractedData()
         
         # Access Document object attributes directly
@@ -606,40 +693,9 @@ async def extract_with_api_fallback(url: str) -> ExtractedData:
             image_url = metadata.og_image
         
         # Extract price from markdown content
-        all_prices = []
+        price = extract_price_from_markdown(markdown, default_currency)
         
-        # Chilean price patterns: $339.990 or $ 339.990
-        price_patterns = [
-            r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)(?!\d)',  # $339.990 or $ 339.990
-        ]
-        
-        for pattern in price_patterns:
-            matches = re.findall(pattern, markdown)
-            for m in matches:
-                try:
-                    clean_price = m.replace('.', '')
-                    p = float(clean_price)
-                    if p > 10000:  # Reasonable price threshold for Chilean pesos
-                        all_prices.append(p)
-                except:
-                    pass
-        
-        # For product pages, the main price is usually one of the larger prices
-        # Sort and get a reasonable price (not the smallest which might be a discount code)
-        price = None
-        if all_prices:
-            # Remove duplicates and sort
-            unique_prices = sorted(set(all_prices))
-            # If we have multiple prices, take the first significant one 
-            # (prices are usually listed in order of importance on product pages)
-            for p in all_prices:
-                if p > 50000:  # Minimum reasonable product price
-                    price = p
-                    break
-            if not price:
-                price = min(unique_prices)
-        
-        logger.info(f"Firecrawl extraction: title={title}, price={price}, currency={default_currency}")
+        logger.info(f"Firecrawl CLOUD extraction: title={title}, price={price}, currency={default_currency}")
         
         return ExtractedData(
             title=title[:200] if title else None,
@@ -649,8 +705,42 @@ async def extract_with_api_fallback(url: str) -> ExtractedData:
             image_url=image_url
         )
     except Exception as e:
-        logger.error(f"Firecrawl error for {url}: {e}")
+        logger.error(f"Firecrawl cloud error for {url}: {e}")
         return ExtractedData()
+
+
+def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
+    """Extract price from markdown content"""
+    all_prices = []
+    
+    # Chilean price patterns: $339.990 or $ 339.990
+    price_patterns = [
+        r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)(?!\d)',  # $339.990 or $ 339.990
+    ]
+    
+    for pattern in price_patterns:
+        matches = re.findall(pattern, markdown)
+        for m in matches:
+            try:
+                clean_price = m.replace('.', '')
+                p = float(clean_price)
+                if p > 10000:  # Reasonable price threshold for Chilean pesos
+                    all_prices.append(p)
+            except:
+                pass
+    
+    # For product pages, the main price is usually one of the larger prices
+    price = None
+    if all_prices:
+        unique_prices = sorted(set(all_prices))
+        for p in all_prices:
+            if p > 50000:  # Minimum reasonable product price
+                price = p
+                break
+        if not price:
+            price = min(unique_prices)
+    
+    return price
 
 
 async def extract_with_ai(url: str) -> ExtractedData:
