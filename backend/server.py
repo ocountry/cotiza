@@ -691,14 +691,29 @@ async def get_price_history(item_id: str, user: User = Depends(get_current_user)
 
 # ==================== NOTIFICATION SERVICE ====================
 
-async def send_notification(item: dict, old_price: float, new_price: float):
-    """Send notification about price change"""
-    endpoint = item.get('notification_endpoint')
-    if not endpoint:
-        logger.info(f"No notification endpoint for item {item.get('item_id')}")
+async def send_notification(item: dict, old_price: float, new_price: float, user: dict):
+    """Send notification about price change via system webhook"""
+    webhook_url = os.environ.get('NOTIFICATION_WEBHOOK_URL')
+    if not webhook_url:
+        logger.warning("NOTIFICATION_WEBHOOK_URL not configured")
         return
     
     channels = item.get('notification_channels', ['email'])
+    
+    # Build notification targets from user profile
+    notification_targets = {}
+    if 'email' in channels and user.get('notification_email'):
+        notification_targets['email'] = user.get('notification_email')
+    if 'whatsapp' in channels and user.get('notification_whatsapp'):
+        notification_targets['whatsapp'] = user.get('notification_whatsapp')
+    if 'telegram' in channels and user.get('notification_telegram'):
+        notification_targets['telegram'] = user.get('notification_telegram')
+    if 'sms' in channels and user.get('notification_sms'):
+        notification_targets['sms'] = user.get('notification_sms')
+    
+    if not notification_targets:
+        logger.info(f"No notification targets configured for item {item.get('item_id')}")
+        return
     
     payload = {
         "item_id": item.get('item_id'),
@@ -710,13 +725,16 @@ async def send_notification(item: dict, old_price: float, new_price: float):
         "price_change": new_price - old_price,
         "price_change_percent": ((new_price - old_price) / old_price) * 100 if old_price else 0,
         "channels": channels,
+        "notification_targets": notification_targets,
+        "user_id": user.get('user_id'),
+        "user_name": user.get('name'),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
     try:
         async with httpx.AsyncClient(timeout=10.0) as client_http:
-            response = await client_http.post(endpoint, json=payload)
-            logger.info(f"Notification sent to {endpoint}: {response.status_code}")
+            response = await client_http.post(webhook_url, json=payload)
+            logger.info(f"Notification sent to webhook: {response.status_code}")
     except Exception as e:
         logger.error(f"Failed to send notification: {e}")
 
