@@ -291,6 +291,68 @@ export default function AddItem() {
             </CardContent>
           </Card>
 
+          {/* Site Not Supported Message */}
+          {siteNotSupported && (
+            <Card className="bg-warning/5 border border-warning/30 rounded-sm animate-slide-up">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 bg-warning/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-5 h-5 text-warning" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-heading text-lg text-warning mb-2">
+                      Sitio no habilitado
+                    </h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed">
+                      Por el momento no se puede obtener la información desde el sitio del producto ya que la tienda no está habilitada en el sistema. El equipo ha sido notificado y pronto lo habilitará. Te enviaremos una notificación a tu correo cuando esté disponible.
+                    </p>
+                    <p className="text-muted-foreground text-sm mt-3">
+                      Puedes intentar con el método de <span className="text-accent font-medium">extracción con IA</span> si aún no lo has probado.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Preview */}
+          {preview && (
+            <Card className="bg-card border border-accent/30 rounded-sm animate-slide-up">
+              <CardHeader>
+                <CardTitle className="font-heading text-xl">Vista Previa</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {preview.image_url && (
+                  <img 
+                    src={preview.image_url} 
+                    alt={preview.title || 'Producto'}
+                    className="w-full h-48 object-cover rounded-sm"
+                    onError={(e) => e.target.style.display = 'none'}
+                  />
+                )}
+                <div>
+                  <h3 className="font-heading text-2xl mb-2">
+                    {preview.title || 'Título no detectado'}
+                  </h3>
+                  {preview.description && (
+                    <p className="text-muted-foreground text-sm line-clamp-3">
+                      {preview.description}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center justify-between pt-4 border-t border-border/50">
+                  <div>
+                    <span className="text-muted-foreground text-sm block">Precio Detectado</span>
+                    <span className="text-xs text-muted-foreground">Moneda: {preview.currency || 'USD'}</span>
+                  </div>
+                  <span className={`text-3xl font-heading ${siteNotSupported ? 'text-warning' : ''}`}>
+                    {formatPrice(preview.price, preview.currency)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Notification Channels */}
           <Card className="bg-card border border-border/50 rounded-sm">
             <CardHeader>
@@ -358,67 +420,7 @@ export default function AddItem() {
             </CardContent>
           </Card>
 
-          {/* Site Not Supported Message */}
-          {siteNotSupported && (
-            <Card className="bg-warning/5 border border-warning/30 rounded-sm animate-slide-up">
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-warning/20 rounded-full flex items-center justify-center flex-shrink-0">
-                    <AlertCircle className="w-5 h-5 text-warning" strokeWidth={1.5} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-heading text-lg text-warning mb-2">
-                      Sitio no habilitado
-                    </h3>
-                    <p className="text-muted-foreground text-sm leading-relaxed">
-                      Por el momento no se puede obtener la información desde el sitio del producto ya que la tienda no está habilitada en el sistema. El equipo ha sido notificado y pronto lo habilitará. Te enviaremos una notificación a tu correo cuando esté disponible.
-                    </p>
-                    <p className="text-muted-foreground text-sm mt-3">
-                      Puedes intentar con el método de <span className="text-accent font-medium">extracción con IA</span> si aún no lo has probado.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Preview */}
-          {preview && (
-            <Card className="bg-card border border-accent/30 rounded-sm animate-slide-up">
-              <CardHeader>
-                <CardTitle className="font-heading text-xl">Vista Previa</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {preview.image_url && (
-                  <img 
-                    src={preview.image_url} 
-                    alt={preview.title || 'Producto'}
-                    className="w-full h-48 object-cover rounded-sm"
-                    onError={(e) => e.target.style.display = 'none'}
-                  />
-                )}
-                <div>
-                  <h3 className="font-heading text-2xl mb-2">
-                    {preview.title || 'Título no detectado'}
-                  </h3>
-                  {preview.description && (
-                    <p className="text-muted-foreground text-sm line-clamp-3">
-                      {preview.description}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                  <div>
-                    <span className="text-muted-foreground text-sm block">Precio Detectado</span>
-                    <span className="text-xs text-muted-foreground">Moneda: {preview.currency || 'USD'}</span>
-                  </div>
-                  <span className={`text-3xl font-heading ${siteNotSupported ? 'text-warning' : ''}`}>
-                    {formatPrice(preview.price, preview.currency)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          
 
           {/* Submit */}
           <div className="flex gap-4">
