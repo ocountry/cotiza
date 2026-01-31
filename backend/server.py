@@ -83,13 +83,17 @@ class CreateItemRequest(BaseModel):
     url: str
     extraction_method: str = "scraping"
     notification_channels: List[str] = Field(default_factory=lambda: ["email"])
-    notification_endpoint: Optional[str] = None
 
 class UpdateItemRequest(BaseModel):
     notification_channels: Optional[List[str]] = None
-    notification_endpoint: Optional[str] = None
     is_active: Optional[bool] = None
     extraction_method: Optional[str] = None
+
+class UpdateUserProfileRequest(BaseModel):
+    notification_email: Optional[str] = None
+    notification_whatsapp: Optional[str] = None
+    notification_telegram: Optional[str] = None
+    notification_sms: Optional[str] = None
 
 class ExtractedData(BaseModel):
     title: Optional[str] = None
