@@ -563,21 +563,28 @@ async def extract_with_api_fallback(url: str) -> ExtractedData:
         domain = urlparse(url).netloc.lower()
         default_currency = "CLP" if '.cl' in domain else "USD"
         
-        # Use a web scraping API service
+        # Use Jina reader API
         api_url = f"https://r.jina.ai/{url}"
         
-        headers = {
-            "Accept": "text/plain",
-        }
-        
         async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.get(api_url, headers=headers)
+            response = await client.get(api_url)
             
             if response.status_code != 200:
-                logger.warning(f"API fallback failed with status {response.status_code}")
+                logger.warning(f"Jina API failed with status {response.status_code}")
                 return ExtractedData()
             
             content = response.text
+            
+            # Check if we got a real page or an error
+            if '403 ERROR' in content or 'Request blocked' in content:
+                logger.warning(f"Site {domain} is protected. Use AI extraction method for better results.")
+                return ExtractedData(
+                    title=f"Protected site ({domain})",
+                    description="This site has anti-bot protection. Try using AI extraction method instead.",
+                    price=None,
+                    currency=default_currency,
+                    image_url=None
+                )
             
             # Extract title from content
             title = None
