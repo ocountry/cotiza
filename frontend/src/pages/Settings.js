@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { 
   TrendingDown, 
@@ -17,13 +17,66 @@ import {
   Monitor,
   User,
   Palette,
-  LogOut
+  LogOut,
+  Bell,
+  Mail,
+  MessageCircle,
+  Send,
+  Phone,
+  Save,
+  Loader2
 } from 'lucide-react';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, checkAuth } = useAuth();
   const { theme, setTheme } = useTheme();
+  const [saving, setSaving] = useState(false);
+  
+  // Notification channels
+  const [notificationEmail, setNotificationEmail] = useState('');
+  const [notificationWhatsapp, setNotificationWhatsapp] = useState('');
+  const [notificationTelegram, setNotificationTelegram] = useState('');
+  const [notificationSms, setNotificationSms] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      setNotificationEmail(user.notification_email || user.email || '');
+      setNotificationWhatsapp(user.notification_whatsapp || '');
+      setNotificationTelegram(user.notification_telegram || '');
+      setNotificationSms(user.notification_sms || '');
+    }
+  }, [user]);
+
+  const handleSaveNotifications = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch(`${API}/auth/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          notification_email: notificationEmail || null,
+          notification_whatsapp: notificationWhatsapp || null,
+          notification_telegram: notificationTelegram || null,
+          notification_sms: notificationSms || null,
+        }),
+      });
+      
+      if (response.ok) {
+        toast.success('Notification settings saved');
+        checkAuth(); // Refresh user data
+      } else {
+        toast.error('Failed to save settings');
+      }
+    } catch (error) {
+      toast.error('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -65,7 +118,7 @@ export default function Settings() {
             Settings
           </h1>
           <p className="text-muted-foreground">
-            Manage your account and preferences
+            Manage your account and notification preferences
           </p>
         </div>
 
@@ -92,6 +145,106 @@ export default function Settings() {
                   <p className="text-muted-foreground text-sm">{user?.email}</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Notification Channels */}
+          <Card className="bg-card border border-border/50 rounded-sm">
+            <CardHeader>
+              <CardTitle className="font-heading text-xl flex items-center gap-2">
+                <Bell className="w-5 h-5 text-accent" strokeWidth={1.5} />
+                Notification Channels
+              </CardTitle>
+              <CardDescription>
+                Configure your accounts for each notification channel. When you create items, you'll select which channels to use.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Email */}
+              <div className="space-y-2">
+                <Label htmlFor="notification-email" className="flex items-center gap-2 text-sm font-medium">
+                  <Mail className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                  Email
+                </Label>
+                <Input
+                  id="notification-email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  className="h-11 rounded-sm"
+                  data-testid="notification-email"
+                />
+              </div>
+              
+              {/* WhatsApp */}
+              <div className="space-y-2">
+                <Label htmlFor="notification-whatsapp" className="flex items-center gap-2 text-sm font-medium">
+                  <MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                  WhatsApp
+                </Label>
+                <Input
+                  id="notification-whatsapp"
+                  type="tel"
+                  placeholder="+56 9 1234 5678"
+                  value={notificationWhatsapp}
+                  onChange={(e) => setNotificationWhatsapp(e.target.value)}
+                  className="h-11 rounded-sm"
+                  data-testid="notification-whatsapp"
+                />
+                <p className="text-xs text-muted-foreground">Include country code (e.g., +56 for Chile)</p>
+              </div>
+              
+              {/* Telegram */}
+              <div className="space-y-2">
+                <Label htmlFor="notification-telegram" className="flex items-center gap-2 text-sm font-medium">
+                  <Send className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                  Telegram
+                </Label>
+                <Input
+                  id="notification-telegram"
+                  type="text"
+                  placeholder="@username or chat_id"
+                  value={notificationTelegram}
+                  onChange={(e) => setNotificationTelegram(e.target.value)}
+                  className="h-11 rounded-sm"
+                  data-testid="notification-telegram"
+                />
+              </div>
+              
+              {/* SMS */}
+              <div className="space-y-2">
+                <Label htmlFor="notification-sms" className="flex items-center gap-2 text-sm font-medium">
+                  <Phone className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                  SMS
+                </Label>
+                <Input
+                  id="notification-sms"
+                  type="tel"
+                  placeholder="+56 9 1234 5678"
+                  value={notificationSms}
+                  onChange={(e) => setNotificationSms(e.target.value)}
+                  className="h-11 rounded-sm"
+                  data-testid="notification-sms"
+                />
+                <p className="text-xs text-muted-foreground">Include country code</p>
+              </div>
+              
+              <Button
+                onClick={handleSaveNotifications}
+                disabled={saving}
+                className="w-full rounded-full h-11 uppercase tracking-widest text-xs font-bold btn-hover-scale"
+                data-testid="save-notifications-btn"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                    Save Notification Settings
+                  </>
+                )}
+              </Button>
             </CardContent>
           </Card>
 
