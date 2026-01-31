@@ -854,21 +854,29 @@ def extract_image_from_markdown(markdown: str) -> str:
     """Extract product image URL from markdown when og_image is not available."""
     
     # Look for image URLs in markdown ![alt](url) format
-    # Match URLs with image extensions OR product image CDN patterns
-    img_patterns = [
-        r'!\[[^\]]*\]\((https?://[^)]+\.(?:jpg|jpeg|png|webp|gif)[^)]*)\)',  # Standard image extensions
-        r'!\[[^\]]*\]\((https?://[^)]*(?:product|prd|item)[^)]*)\)',  # Product CDN URLs
-        r'!\[[^\]]*\]\((https?://[^)]+/(?:product-medias|images|media)/[^)]+)\)',  # Media paths
-    ]
+    # Handle URLs that may contain parentheses in filters like :quality(75)
     
-    all_images = []
-    for pattern in img_patterns:
-        matches = re.findall(pattern, markdown, re.IGNORECASE)
-        all_images.extend(matches)
+    # First try: Standard markdown image pattern (greedy, handles nested parens)
+    # Match ![anything](URL) where URL ends with image extension
+    img_pattern = r'!\[[^\]]*\]\((https?://[^\s\)]+\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s\)]*)?)\)'
     
-    if all_images:
-        # Filter out icons, logos, small images, banners
-        for img_url in all_images:
+    matches = re.findall(img_pattern, markdown, re.IGNORECASE)
+    
+    # If standard pattern didn't find much, try alternative pattern for CDN URLs
+    if len(matches) < 3:
+        # Look for product image CDNs with complex URLs
+        cdn_pattern = r'(https?://[^\s\)]+/product-medias/[^\s\)]+\.(?:jpg|jpeg|png|webp))'
+        cdn_matches = re.findall(cdn_pattern, markdown, re.IGNORECASE)
+        matches.extend(cdn_matches)
+        
+        # Also try prd-cl pattern (Paris.cl specific)
+        prd_pattern = r'(https?://[^\s]+/prd-cl/[^\s\)]+\.(?:jpg|jpeg|png|webp))'
+        prd_matches = re.findall(prd_pattern, markdown, re.IGNORECASE)
+        matches.extend(prd_matches)
+    
+    if matches:
+        # Filter out icons, logos, banners
+        for img_url in matches:
             img_lower = img_url.lower()
             # Skip common non-product images
             if any(skip in img_lower for skip in ['icon', 'logo', 'banner', 'avatar', 'sprite', 'huincha', 'voladora']):
@@ -878,7 +886,7 @@ def extract_image_from_markdown(markdown: str) -> str:
                 return img_url
         
         # If no product-specific image found, return first valid one that's not a banner
-        for img_url in all_images:
+        for img_url in matches:
             if not any(skip in img_url.lower() for skip in ['icon', 'logo', 'banner', 'avatar', 'sprite', 'huincha']):
                 return img_url
     
