@@ -207,16 +207,20 @@ export default function AddItem() {
             <CardHeader>
               <CardTitle className="font-heading text-xl flex items-center gap-2">
                 <Globe className="w-5 h-5 text-accent" strokeWidth={1.5} />
-                Product URL
+                URL del Producto
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-3">
                 <Input
                   type="url"
-                  placeholder="https://example.com/product"
+                  placeholder="https://ejemplo.com/producto"
                   value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                    setSiteNotSupported(false);
+                    setPreview(null);
+                  }}
                   className="flex-1 h-12 px-4 rounded-sm bg-background border-border"
                   data-testid="url-input"
                 />
@@ -232,7 +236,7 @@ export default function AddItem() {
                   ) : (
                     <>
                       <Search className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Preview
+                      Vista Previa
                     </>
                   )}
                 </Button>
