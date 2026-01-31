@@ -513,26 +513,27 @@ async def extract_with_scraping(url: str) -> ExtractedData:
             
             # Also search raw HTML for JSON price patterns (for dynamic sites like Sodimac)
             if price is None:
-                html_text = str(soup)
+                html_text = response.text  # Use original response text, not soup
                 # Look for "price":"69990" or "price":69990 patterns
                 price_json_patterns = [
-                    r'"price"\s*:\s*"?(\d+)"?\s*[,}]',
-                    r'"lowPrice"\s*:\s*"?(\d+)"?\s*[,}]',
-                    r'"offers"[^}]*"price"\s*:\s*"?(\d+)"?',
+                    r'"price"\s*:\s*"(\d{4,})"',  # "price":"69990"
+                    r'"price"\s*:\s*(\d{4,})[,}]',  # "price":69990
+                    r'"lowPrice"\s*:\s*"?(\d{4,})"?',
                 ]
                 
+                all_prices = []
                 for pattern in price_json_patterns:
                     matches = re.findall(pattern, html_text)
-                    if matches:
-                        # Get the most common price (likely the main product price)
-                        from collections import Counter
-                        price_counts = Counter(matches)
-                        most_common_price = price_counts.most_common(1)[0][0]
-                        try:
-                            price = float(most_common_price)
-                            break
-                        except:
-                            continue
+                    all_prices.extend(matches)
+                
+                if all_prices:
+                    # Get the most common price or the lowest (likely sale price)
+                    from collections import Counter
+                    price_counts = Counter(all_prices)
+                    # If we have multiple prices, prefer the lower one (sale price)
+                    prices_as_float = [float(p) for p in all_prices if float(p) > 100]
+                    if prices_as_float:
+                        price = min(prices_as_float)  # Get lowest price (sale price)
             
             # If no JSON-LD price, try HTML selectors
             if price is None:
