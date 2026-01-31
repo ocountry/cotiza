@@ -833,15 +833,18 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
             pass
     
     if valid_prices:
-        # Check for old/new price pattern (two similar large prices in sequence)
-        # Pattern: $889.990 followed by $949.990 - take the second one
+        # Check for special price / regular price pattern common in Chilean stores
+        # Pattern: $889.990 (special) followed by $949.990 (regular) - take the HIGHER one (regular price)
+        # Or: $889.990 (old) followed by $949.990 (current) - still take the second
         if len(valid_prices) >= 2:
             first, second = valid_prices[0], valid_prices[1]
-            # If both are large product prices (>100k) and similar magnitude, take second (current price)
-            if first > 100000 and second > 100000:
+            # If both are large product prices (>50k) and similar magnitude
+            if first > 50000 and second > 50000:
                 ratio = max(first, second) / min(first, second)
                 if ratio < 1.5:  # Similar prices (within 50%)
-                    logger.debug(f"Detected old/new price pattern: {first} -> {second}, using {second}")
+                    # Take the SECOND price - it's usually the regular/current price
+                    # (First is often special payment method price or old price)
+                    logger.info(f"Detected price pair pattern: {first} and {second}, using second: {second}")
                     return second
         
         logger.debug(f"Valid prices found: {valid_prices[:5]}")
