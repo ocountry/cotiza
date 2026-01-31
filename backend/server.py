@@ -266,157 +266,304 @@ def parse_price_and_currency(text: str) -> tuple:
     """
     Parse price from text supporting multiple currency formats:
     - USD: $1,299.99 or $1299.99
-    - CLP: $1.299.990 or $1,299,990 (no decimals)
+    - CLP: $69.990 or $1.299.990 (dots as thousand separators, no decimals)
     - EUR: €1.299,99 or 1.299,99 €
     - General: detects currency symbol and format
     """
     if not text:
         return None, "USD"
     
-    # Currency detection patterns
-    currency_patterns = {
-        'CLP': [r'CLP', r'\$\s*[\d\.]+(?:\.\d{3})+(?!\d)', r'pesos?\s*chilenos?'],
-        'USD': [r'USD', r'US\$', r'U\.S\.\s*dollars?'],
-        'EUR': [r'EUR', r'€', r'euros?'],
-        'GBP': [r'GBP', r'£', r'pounds?'],
-        'MXN': [r'MXN', r'pesos?\s*mexicanos?'],
-        'ARS': [r'ARS', r'pesos?\s*argentinos?'],
-        'BRL': [r'BRL', r'R\$', r'reais'],
-    }
+    # Clean the text
+    text = text.strip()
     
+    # Currency detection based on domain hints in text or common patterns
     detected_currency = "USD"
     
-    # Detect currency
+    # Check for Chilean peso indicators
+    clp_indicators = ['sodimac', 'falabella', 'mercadolibre.cl', 'paris.cl', 'ripley.cl', 'lider.cl', 'clp', 'pesos chilenos']
     text_lower = text.lower()
-    for curr, patterns in currency_patterns.items():
-        for pattern in patterns:
-            if re.search(pattern, text, re.IGNORECASE):
-                detected_currency = curr
-                break
-        if detected_currency != "USD":
+    
+    for indicator in clp_indicators:
+        if indicator in text_lower:
+            detected_currency = "CLP"
             break
     
-    # Price extraction patterns for different formats
-    price_patterns = [
-        # CLP format: $1.299.990 (dots as thousand separators, no decimals)
-        (r'\$\s*([\d]+(?:\.[\d]{3})+)(?!\d|,)', 'dot_thousands'),
-        # Format with comma as thousand separator: $1,299,990 or 1,299,990
-        (r'[\$€£]?\s*([\d]+(?:,[\d]{3})+)(?:\.(\d{1,2}))?(?!\d)', 'comma_thousands'),
-        # European format: 1.299,99 (dot thousands, comma decimals)
-        (r'[\$€£]?\s*([\d]+(?:\.[\d]{3})+),(\d{1,2})(?!\d)', 'european'),
-        # Simple format: $1299.99 or 1299.99
-        (r'[\$€£]?\s*([\d]+)(?:\.(\d{1,2}))?(?!\d|\.)', 'simple'),
-        # Format: 1299 (integer only)
-        (r'[\$€£]\s*([\d]+)(?!\d|[.,])', 'integer'),
-    ]
+    # If we see a price pattern like $XX.XXX (dot thousands, 3 digits after dot) it's likely CLP
+    clp_pattern = r'\$\s*[\d]{1,3}(?:\.[\d]{3})+(?!\d|,)'
+    if re.search(clp_pattern, text):
+        detected_currency = "CLP"
     
+    # Other currency detection
+    if detected_currency == "USD":
+        currency_patterns = {
+            'EUR': [r'€', r'\bEUR\b', r'euros?'],
+            'GBP': [r'£', r'\bGBP\b', r'pounds?'],
+            'MXN': [r'\bMXN\b', r'pesos?\s*mexicanos?'],
+            'ARS': [r'\bARS\b', r'pesos?\s*argentinos?'],
+            'BRL': [r'R\$', r'\bBRL\b', r'reais'],
+            'USD': [r'\bUSD\b', r'US\$', r'U\.S\.\s*dollars?'],
+        }
+        
+        for curr, patterns in currency_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, text, re.IGNORECASE):
+                    detected_currency = curr
+                    break
+            if detected_currency != "USD":
+                break
+    
+    # Price extraction patterns - order matters!
     price = None
     
-    for pattern, format_type in price_patterns:
-        match = re.search(pattern, text)
-        if match:
+    # Pattern 1: CLP format $69.990 or $1.299.990 (dots as thousand separators)
+    clp_match = re.search(r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)(?!\d|,)', text)
+    if clp_match:
+        price_str = clp_match.group(1).replace('.', '')
+        try:
+            price = float(price_str)
+            if detected_currency == "USD":
+                detected_currency = "CLP"
+        except ValueError:
+            pass
+    
+    # Pattern 2: US format $1,299.99 (comma thousands, dot decimal)
+    if price is None:
+        us_match = re.search(r'\$\s*([\d]{1,3}(?:,[\d]{3})*(?:\.[\d]{1,2})?)(?!\d)', text)
+        if us_match:
+            price_str = us_match.group(1).replace(',', '')
             try:
-                if format_type == 'dot_thousands':
-                    # CLP: 1.299.990 -> 1299990
-                    price_str = match.group(1).replace('.', '')
-                    price = float(price_str)
-                elif format_type == 'comma_thousands':
-                    # US: 1,299,990.99 -> 1299990.99
-                    integer_part = match.group(1).replace(',', '')
-                    decimal_part = match.group(2) if match.lastindex >= 2 and match.group(2) else '0'
-                    price = float(f"{integer_part}.{decimal_part}")
-                elif format_type == 'european':
-                    # EU: 1.299,99 -> 1299.99
-                    integer_part = match.group(1).replace('.', '')
-                    decimal_part = match.group(2)
-                    price = float(f"{integer_part}.{decimal_part}")
-                elif format_type == 'simple':
-                    integer_part = match.group(1)
-                    decimal_part = match.group(2) if match.lastindex >= 2 and match.group(2) else '0'
-                    price = float(f"{integer_part}.{decimal_part}")
-                elif format_type == 'integer':
-                    price = float(match.group(1))
-                
-                if price and price > 0:
-                    break
-            except (ValueError, AttributeError):
-                continue
+                price = float(price_str)
+            except ValueError:
+                pass
+    
+    # Pattern 3: European format €1.299,99 (dot thousands, comma decimal)
+    if price is None:
+        eu_match = re.search(r'€\s*([\d]{1,3}(?:\.[\d]{3})*),(\d{1,2})(?!\d)', text)
+        if eu_match:
+            integer_part = eu_match.group(1).replace('.', '')
+            decimal_part = eu_match.group(2)
+            try:
+                price = float(f"{integer_part}.{decimal_part}")
+                detected_currency = "EUR"
+            except ValueError:
+                pass
+    
+    # Pattern 4: Simple price $199.99 or $199
+    if price is None:
+        simple_match = re.search(r'[\$€£]\s*([\d]+(?:\.[\d]{1,2})?)(?!\d|\.)', text)
+        if simple_match:
+            try:
+                price = float(simple_match.group(1))
+            except ValueError:
+                pass
+    
+    # Pattern 5: Just numbers with currency context
+    if price is None:
+        num_match = re.search(r'([\d]+(?:[.,][\d]+)?)', text)
+        if num_match:
+            price_str = num_match.group(1).replace(',', '.')
+            try:
+                price = float(price_str)
+            except ValueError:
+                pass
     
     return price, detected_currency
+
+
+# Site-specific extractors
+SITE_CONFIGS = {
+    'sodimac.cl': {
+        'price_selectors': ['[data-price]', '.price-value', '[class*="ProductPrice"]', '.product-price', 'script[type="application/ld+json"]'],
+        'title_selectors': ['h1', '[class*="product-name"]', '[class*="ProductName"]'],
+        'currency': 'CLP'
+    },
+    'mercadolibre.cl': {
+        'price_selectors': ['[class*="price-tag"]', '.andes-money-amount', '[class*="ui-pdp-price"]', 'meta[itemprop="price"]'],
+        'title_selectors': ['h1', '.ui-pdp-title'],
+        'currency': 'CLP'
+    },
+    'falabella.com': {
+        'price_selectors': ['[class*="price"]', '[data-testid*="price"]'],
+        'title_selectors': ['h1', '[class*="product-name"]'],
+        'currency': 'CLP'
+    },
+    'paris.cl': {
+        'price_selectors': ['[class*="price"]', '.product-price'],
+        'title_selectors': ['h1'],
+        'currency': 'CLP'
+    },
+    'amazon': {
+        'price_selectors': ['#priceblock_ourprice', '#priceblock_dealprice', '.a-price-whole', '[data-a-color="price"] .a-offscreen'],
+        'title_selectors': ['#productTitle', 'h1'],
+        'currency': 'USD'
+    }
+}
+
+def get_site_config(url: str) -> dict:
+    """Get site-specific configuration based on URL"""
+    from urllib.parse import urlparse
+    domain = urlparse(url).netloc.lower()
+    
+    for site_key, config in SITE_CONFIGS.items():
+        if site_key in domain:
+            return config
+    return None
 
 
 async def extract_with_scraping(url: str) -> ExtractedData:
     """Basic web scraping to extract product info"""
     try:
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.lower()
+        site_config = get_site_config(url)
+        
+        # Better headers for Chilean e-commerce sites
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        }
+        
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client_http:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
             response = await client_http.get(url, headers=headers)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
+            # Default currency based on domain
+            default_currency = "CLP" if any(cl in domain for cl in ['.cl', 'chile']) else "USD"
+            if site_config:
+                default_currency = site_config.get('currency', default_currency)
+            
             # Extract title
             title = None
-            for selector in ['h1', '[class*="title"]', '[class*="product-name"]', 'title']:
+            title_selectors = ['h1', '[class*="title"]', '[class*="product-name"]', '[class*="ProductName"]', 'title']
+            if site_config:
+                title_selectors = site_config.get('title_selectors', []) + title_selectors
+            
+            for selector in title_selectors:
                 elem = soup.select_one(selector)
                 if elem:
                     title = elem.get_text(strip=True)[:200]
-                    break
+                    if title and len(title) > 3:
+                        break
             
             # Extract description
             description = None
-            for selector in ['[class*="description"]', '[class*="product-desc"]', 'meta[name="description"]']:
+            for selector in ['[class*="description"]', '[class*="product-desc"]', 'meta[name="description"]', '[class*="ProductDescription"]']:
                 elem = soup.select_one(selector)
                 if elem:
                     if elem.name == 'meta':
                         description = elem.get('content', '')[:500]
                     else:
                         description = elem.get_text(strip=True)[:500]
-                    break
+                    if description:
+                        break
             
-            # Extract price with improved multi-currency support
+            # Try to extract price from JSON-LD first (most reliable)
             price = None
-            currency = "USD"
+            currency = default_currency
             
-            # First try price-specific elements
-            price_elements = soup.select('[class*="price"], [data-price], [itemprop="price"], [class*="Price"], [class*="valor"], [class*="monto"]')
-            for elem in price_elements:
-                text = elem.get_text()
-                price, currency = parse_price_and_currency(text)
-                if price:
-                    break
-            
-            # If no price found in elements, search full page
-            if not price:
-                # Look for price patterns in the full text
-                full_text = soup.get_text()
-                # Find text around price indicators
-                price_indicators = ['precio', 'price', 'valor', 'total', 'costo', 'cost', '$', '€', '£']
-                for indicator in price_indicators:
-                    pattern = rf'.{{0,50}}{re.escape(indicator)}.{{0,100}}'
-                    matches = re.findall(pattern, full_text, re.IGNORECASE)
-                    for match in matches:
-                        price, currency = parse_price_and_currency(match)
-                        if price:
+            json_ld_scripts = soup.find_all('script', type='application/ld+json')
+            for script in json_ld_scripts:
+                try:
+                    import json
+                    data = json.loads(script.string)
+                    
+                    # Handle array or single object
+                    if isinstance(data, list):
+                        data = data[0] if data else {}
+                    
+                    # Look for price in offers
+                    offers = data.get('offers', data.get('Offers', {}))
+                    if isinstance(offers, list):
+                        offers = offers[0] if offers else {}
+                    
+                    if offers:
+                        price_val = offers.get('price') or offers.get('lowPrice')
+                        if price_val:
+                            price = float(price_val)
+                            currency = offers.get('priceCurrency', default_currency)
                             break
+                except:
+                    continue
+            
+            # If no JSON-LD price, try HTML selectors
+            if price is None:
+                price_selectors = [
+                    '[class*="price"]', '[data-price]', '[itemprop="price"]',
+                    '[class*="Price"]', '[class*="producto-precio"]', '[class*="ProductPrice"]'
+                ]
+                if site_config:
+                    price_selectors = site_config.get('price_selectors', []) + price_selectors
+                
+                for selector in price_selectors:
+                    elements = soup.select(selector)
+                    for elem in elements:
+                        # Check data attributes first
+                        if elem.get('data-price'):
+                            try:
+                                price = float(elem.get('data-price'))
+                                break
+                            except:
+                                pass
+                        if elem.get('content'):
+                            try:
+                                price = float(elem.get('content'))
+                                break
+                            except:
+                                pass
+                        
+                        # Parse text content
+                        text = elem.get_text(strip=True)
+                        if text:
+                            parsed_price, parsed_currency = parse_price_and_currency(text + f" {domain}")
+                            if parsed_price and parsed_price > 0:
+                                price = parsed_price
+                                currency = parsed_currency
+                                break
                     if price:
                         break
             
+            # Last resort: search full page for price patterns
+            if price is None:
+                full_text = soup.get_text()
+                # Add domain context for currency detection
+                parsed_price, parsed_currency = parse_price_and_currency(full_text[:5000] + f" {domain}")
+                if parsed_price:
+                    price = parsed_price
+                    currency = parsed_currency
+            
             # Extract image
             image_url = None
-            for selector in ['[class*="product"] img', '[class*="gallery"] img', 'img[itemprop="image"]', 'meta[property="og:image"]']:
+            image_selectors = [
+                'meta[property="og:image"]',
+                '[class*="product"] img',
+                '[class*="gallery"] img', 
+                'img[itemprop="image"]',
+                '[class*="ProductImage"] img',
+                '.product-image img'
+            ]
+            
+            for selector in image_selectors:
                 elem = soup.select_one(selector)
                 if elem:
                     if elem.name == 'meta':
                         image_url = elem.get('content')
                     else:
-                        image_url = elem.get('src') or elem.get('data-src')
-                    if image_url and not image_url.startswith('http'):
-                        from urllib.parse import urljoin
-                        image_url = urljoin(url, image_url)
-                    break
+                        image_url = elem.get('src') or elem.get('data-src') or elem.get('data-lazy-src')
+                    if image_url:
+                        if not image_url.startswith('http'):
+                            from urllib.parse import urljoin
+                            image_url = urljoin(url, image_url)
+                        # Skip placeholder images
+                        if 'placeholder' not in image_url.lower() and 'default' not in image_url.lower():
+                            break
+                        else:
+                            image_url = None
             
             return ExtractedData(
                 title=title,
