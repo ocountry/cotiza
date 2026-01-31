@@ -237,6 +237,89 @@ async def logout(request: Request, response: Response):
 
 # ==================== EXTRACTION SERVICES ====================
 
+def parse_price_and_currency(text: str) -> tuple:
+    """
+    Parse price from text supporting multiple currency formats:
+    - USD: $1,299.99 or $1299.99
+    - CLP: $1.299.990 or $1,299,990 (no decimals)
+    - EUR: €1.299,99 or 1.299,99 €
+    - General: detects currency symbol and format
+    """
+    if not text:
+        return None, "USD"
+    
+    # Currency detection patterns
+    currency_patterns = {
+        'CLP': [r'CLP', r'\$\s*[\d\.]+(?:\.\d{3})+(?!\d)', r'pesos?\s*chilenos?'],
+        'USD': [r'USD', r'US\$', r'U\.S\.\s*dollars?'],
+        'EUR': [r'EUR', r'€', r'euros?'],
+        'GBP': [r'GBP', r'£', r'pounds?'],
+        'MXN': [r'MXN', r'pesos?\s*mexicanos?'],
+        'ARS': [r'ARS', r'pesos?\s*argentinos?'],
+        'BRL': [r'BRL', r'R\$', r'reais'],
+    }
+    
+    detected_currency = "USD"
+    
+    # Detect currency
+    text_lower = text.lower()
+    for curr, patterns in currency_patterns.items():
+        for pattern in patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                detected_currency = curr
+                break
+        if detected_currency != "USD":
+            break
+    
+    # Price extraction patterns for different formats
+    price_patterns = [
+        # CLP format: $1.299.990 (dots as thousand separators, no decimals)
+        (r'\$\s*([\d]+(?:\.[\d]{3})+)(?!\d|,)', 'dot_thousands'),
+        # Format with comma as thousand separator: $1,299,990 or 1,299,990
+        (r'[\$€£]?\s*([\d]+(?:,[\d]{3})+)(?:\.(\d{1,2}))?(?!\d)', 'comma_thousands'),
+        # European format: 1.299,99 (dot thousands, comma decimals)
+        (r'[\$€£]?\s*([\d]+(?:\.[\d]{3})+),(\d{1,2})(?!\d)', 'european'),
+        # Simple format: $1299.99 or 1299.99
+        (r'[\$€£]?\s*([\d]+)(?:\.(\d{1,2}))?(?!\d|\.)', 'simple'),
+        # Format: 1299 (integer only)
+        (r'[\$€£]\s*([\d]+)(?!\d|[.,])', 'integer'),
+    ]
+    
+    price = None
+    
+    for pattern, format_type in price_patterns:
+        match = re.search(pattern, text)
+        if match:
+            try:
+                if format_type == 'dot_thousands':
+                    # CLP: 1.299.990 -> 1299990
+                    price_str = match.group(1).replace('.', '')
+                    price = float(price_str)
+                elif format_type == 'comma_thousands':
+                    # US: 1,299,990.99 -> 1299990.99
+                    integer_part = match.group(1).replace(',', '')
+                    decimal_part = match.group(2) if match.lastindex >= 2 and match.group(2) else '0'
+                    price = float(f"{integer_part}.{decimal_part}")
+                elif format_type == 'european':
+                    # EU: 1.299,99 -> 1299.99
+                    integer_part = match.group(1).replace('.', '')
+                    decimal_part = match.group(2)
+                    price = float(f"{integer_part}.{decimal_part}")
+                elif format_type == 'simple':
+                    integer_part = match.group(1)
+                    decimal_part = match.group(2) if match.lastindex >= 2 and match.group(2) else '0'
+                    price = float(f"{integer_part}.{decimal_part}")
+                elif format_type == 'integer':
+                    price = float(match.group(1))
+                
+                if price and price > 0:
+                    break
+            except (ValueError, AttributeError):
+                continue
+    
+    return price, detected_currency
+
+
 async def extract_with_scraping(url: str) -> ExtractedData:
     """Basic web scraping to extract product info"""
     try:
@@ -268,42 +351,33 @@ async def extract_with_scraping(url: str) -> ExtractedData:
                         description = elem.get_text(strip=True)[:500]
                     break
             
-            # Extract price
+            # Extract price with improved multi-currency support
             price = None
             currency = "USD"
-            price_patterns = [
-                r'\$\s*([\d,]+\.?\d*)',
-                r'([\d,]+\.?\d*)\s*(?:USD|EUR|GBP)',
-                r'(?:Price|Precio):\s*\$?\s*([\d,]+\.?\d*)',
-            ]
             
-            price_elements = soup.select('[class*="price"], [data-price], [itemprop="price"]')
+            # First try price-specific elements
+            price_elements = soup.select('[class*="price"], [data-price], [itemprop="price"], [class*="Price"], [class*="valor"], [class*="monto"]')
             for elem in price_elements:
                 text = elem.get_text()
-                for pattern in price_patterns:
-                    match = re.search(pattern, text, re.IGNORECASE)
-                    if match:
-                        price_str = match.group(1).replace(',', '')
-                        try:
-                            price = float(price_str)
-                            break
-                        except ValueError:
-                            continue
+                price, currency = parse_price_and_currency(text)
                 if price:
                     break
             
             # If no price found in elements, search full page
             if not price:
+                # Look for price patterns in the full text
                 full_text = soup.get_text()
-                for pattern in price_patterns:
-                    match = re.search(pattern, full_text, re.IGNORECASE)
-                    if match:
-                        price_str = match.group(1).replace(',', '')
-                        try:
-                            price = float(price_str)
+                # Find text around price indicators
+                price_indicators = ['precio', 'price', 'valor', 'total', 'costo', 'cost', '$', '€', '£']
+                for indicator in price_indicators:
+                    pattern = rf'.{{0,50}}{re.escape(indicator)}.{{0,100}}'
+                    matches = re.findall(pattern, full_text, re.IGNORECASE)
+                    for match in matches:
+                        price, currency = parse_price_and_currency(match)
+                        if price:
                             break
-                        except ValueError:
-                            continue
+                    if price:
+                        break
             
             # Extract image
             image_url = None
