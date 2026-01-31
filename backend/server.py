@@ -424,13 +424,19 @@ async def extract_with_scraping(url: str) -> ExtractedData:
         
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client_http:
             response = await client_http.get(url, headers=headers)
+            
+            # If blocked (403, 503, etc.), try fallback
+            if response.status_code in [403, 503, 429]:
+                logger.warning(f"Site {domain} returned {response.status_code}, trying fallback")
+                return await extract_with_api_fallback(url)
+            
             response.raise_for_status()
             
             html_text = response.text
             
             # Check if blocked by CloudFront or similar
             if '403 ERROR' in html_text or 'Request blocked' in html_text or len(html_text) < 1000:
-                logger.warning(f"Site {domain} blocked direct access, trying alternative method")
+                logger.warning(f"Site {domain} blocked direct access, trying fallback")
                 return await extract_with_api_fallback(url)
             
             soup = BeautifulSoup(html_text, 'html.parser')
