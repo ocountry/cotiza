@@ -42,7 +42,11 @@ class User(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
-    default_notification_endpoint: Optional[str] = None
+    # Notification channels configuration
+    notification_email: Optional[str] = None
+    notification_whatsapp: Optional[str] = None
+    notification_telegram: Optional[str] = None
+    notification_sms: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class UserSession(BaseModel):
