@@ -576,50 +576,66 @@ async def extract_with_api_fallback(url: str) -> ExtractedData:
         app = FirecrawlApp(api_key=firecrawl_key)
         
         # Scrape with Firecrawl - it handles anti-bot protection
-        result = app.scrape(url, formats=['markdown', 'html'])
+        result = app.scrape(url, formats=['markdown'])
         
         if not result:
             logger.warning(f"Firecrawl returned empty result for {url}")
             return ExtractedData()
         
-        markdown = result.get('markdown', '')
-        html_content = result.get('html', '')
-        metadata = result.get('metadata', {})
+        # Access Document object attributes directly
+        markdown = result.markdown or ''
+        metadata = result.metadata
         
-        # Extract title from metadata or content
-        title = metadata.get('title') or metadata.get('ogTitle')
-        if title and '|' in title:
-            title = title.split('|')[0].strip()
+        # Extract title from metadata
+        title = None
+        if metadata:
+            title = metadata.title or metadata.og_title
+            if title and '|' in title:
+                title = title.split('|')[0].strip()
         
         # Extract description
-        description = metadata.get('description') or metadata.get('ogDescription')
+        description = None
+        if metadata:
+            description = metadata.description or metadata.og_description
         
         # Extract image
-        image_url = metadata.get('ogImage')
+        image_url = None
+        if metadata:
+            image_url = metadata.og_image
         
-        # Extract price from markdown/html content
+        # Extract price from markdown content
         all_prices = []
-        content = markdown + ' ' + html_content
         
         # Chilean price patterns: $339.990 or $ 339.990
         price_patterns = [
             r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)(?!\d)',  # $339.990 or $ 339.990
-            r'"price"\s*:\s*"?(\d{4,})"?',  # JSON price
-            r'(\d{2,3}(?:\.\d{3})+)\s*(?:CLP|pesos)',  # 339.990 CLP
         ]
         
         for pattern in price_patterns:
-            matches = re.findall(pattern, content)
+            matches = re.findall(pattern, markdown)
             for m in matches:
                 try:
                     clean_price = m.replace('.', '')
                     p = float(clean_price)
-                    if p > 1000:
+                    if p > 10000:  # Reasonable price threshold for Chilean pesos
                         all_prices.append(p)
                 except:
                     pass
         
-        price = min(all_prices) if all_prices else None
+        # For product pages, the main price is usually one of the larger prices
+        # Sort and get a reasonable price (not the smallest which might be a discount code)
+        price = None
+        if all_prices:
+            # Remove duplicates and sort
+            unique_prices = sorted(set(all_prices))
+            # If we have multiple prices, take the first significant one 
+            # (prices are usually listed in order of importance on product pages)
+            for p in all_prices:
+                if p > 50000:  # Minimum reasonable product price
+                    price = p
+                    break
+            if not price:
+                price = min(unique_prices)
         
         logger.info(f"Firecrawl extraction: title={title}, price={price}, currency={default_currency}")
         
