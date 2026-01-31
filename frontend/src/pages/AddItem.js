@@ -278,55 +278,6 @@ export default function AddItem() {
             </CardContent>
           </Card>
 
-          {/* Paste Content Option (for protected sites) */}
-          {showPasteOption && (
-            <Card className="bg-card border border-warning/30 rounded-sm animate-slide-up">
-              <CardHeader>
-                <CardTitle className="font-heading text-xl flex items-center gap-2">
-                  <ClipboardPaste className="w-5 h-5 text-warning" strokeWidth={1.5} />
-                  Site Protection Detected
-                </CardTitle>
-                <CardDescription>
-                  This site blocks automated access. Copy the visible page content and paste it below, then click Preview again.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-sm text-muted-foreground space-y-2">
-                  <p><strong>How to copy:</strong></p>
-                  <ol className="list-decimal list-inside space-y-1 text-xs">
-                    <li>Open the product page in your browser</li>
-                    <li>Select all visible text (Ctrl+A or Cmd+A)</li>
-                    <li>Copy (Ctrl+C or Cmd+C)</li>
-                    <li>Paste below</li>
-                  </ol>
-                </div>
-                <Textarea
-                  placeholder="Paste the page content here..."
-                  value={pastedContent}
-                  onChange={(e) => setPastedContent(e.target.value)}
-                  className="min-h-32 text-sm"
-                  data-testid="pasted-content"
-                />
-                <Button
-                  variant="outline"
-                  onClick={handlePreview}
-                  disabled={loadingPreview || !pastedContent.trim()}
-                  className="w-full rounded-full h-10 uppercase tracking-widest text-xs font-bold"
-                  data-testid="analyze-pasted-btn"
-                >
-                  {loadingPreview ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                      Analyze Pasted Content
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Notification Channels */}
           <Card className="bg-card border border-border/50 rounded-sm">
             <CardHeader>
