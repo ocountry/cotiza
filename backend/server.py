@@ -1351,6 +1351,139 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ==================== PRICE CHECK CRON JOB ====================
+
+scheduler = AsyncIOScheduler()
+
+async def check_all_prices():
+    """Cron job to check prices for all active tracked items"""
+    logger.info("=== Starting scheduled price check ===")
+    
+    try:
+        # Get all active tracked items
+        items = await db.tracked_items.find({"is_active": True}).to_list(1000)
+        logger.info(f"Found {len(items)} active items to check")
+        
+        for item in items:
+            try:
+                await check_single_item_price(item)
+                # Small delay between items to avoid rate limiting
+                await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(f"Error checking item {item.get('item_id')}: {e}")
+                continue
+        
+        logger.info("=== Scheduled price check completed ===")
+    except Exception as e:
+        logger.error(f"Price check cron error: {e}")
+
+
+async def check_single_item_price(item: dict):
+    """Check price for a single item and notify if changed"""
+    item_id = item.get('item_id')
+    url = item.get('url')
+    old_price = item.get('current_price')
+    extraction_method = item.get('extraction_method', 'scraping')
+    
+    logger.info(f"Checking price for: {item.get('title', url)[:50]}...")
+    
+    # Extract current price from URL
+    if extraction_method == "ai":
+        extracted = await extract_with_ai(url)
+    else:
+        extracted = await extract_with_scraping(url)
+    
+    new_price = extracted.price
+    
+    # Update last_checked timestamp
+    await db.tracked_items.update_one(
+        {"item_id": item_id},
+        {"$set": {"last_checked": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    if new_price is None:
+        logger.warning(f"Could not extract price for item {item_id}")
+        return
+    
+    # Check if price changed
+    if old_price is not None and new_price != old_price:
+        logger.info(f"Price changed for {item_id}: {old_price} -> {new_price}")
+        
+        # Update current price
+        await db.tracked_items.update_one(
+            {"item_id": item_id},
+            {"$set": {
+                "current_price": new_price,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        # Save to price history
+        history = PriceHistory(
+            item_id=item_id,
+            price=new_price,
+            currency=item.get('currency', 'USD')
+        )
+        history_dict = history.model_dump()
+        history_dict['checked_at'] = history_dict['checked_at'].isoformat()
+        await db.price_history.insert_one(history_dict)
+        
+        # Get user for notification
+        user_doc = await db.users.find_one({"user_id": item.get('user_id')}, {"_id": 0})
+        if user_doc:
+            await send_notification(item, old_price, new_price, user_doc)
+    else:
+        logger.debug(f"No price change for {item_id}: {old_price}")
+
+
+@api_router.get("/cron/status")
+async def get_cron_status():
+    """Get the status of the price check cron job"""
+    interval_hours = int(os.environ.get('PRICE_CHECK_INTERVAL_HOURS', 12))
+    jobs = scheduler.get_jobs()
+    
+    return {
+        "scheduler_running": scheduler.running,
+        "interval_hours": interval_hours,
+        "jobs": [
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run": job.next_run_time.isoformat() if job.next_run_time else None
+            }
+            for job in jobs
+        ]
+    }
+
+
+@api_router.post("/cron/trigger")
+async def trigger_price_check(user: User = Depends(get_current_user)):
+    """Manually trigger a price check for all items (admin only)"""
+    # Run in background to not block the response
+    asyncio.create_task(check_all_prices())
+    return {"message": "Price check triggered", "status": "running"}
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the scheduler on app startup"""
+    interval_hours = int(os.environ.get('PRICE_CHECK_INTERVAL_HOURS', 12))
+    
+    scheduler.add_job(
+        check_all_prices,
+        trigger=IntervalTrigger(hours=interval_hours),
+        id="price_check_job",
+        name="Periodic Price Check",
+        replace_existing=True
+    )
+    
+    scheduler.start()
+    logger.info(f"Price check scheduler started - running every {interval_hours} hours")
+
+
 @app.on_event("shutdown")
-async def shutdown_db_client():
+async def shutdown_event():
+    """Shutdown scheduler and database on app shutdown"""
+    scheduler.shutdown(wait=False)
+    logger.info("Scheduler shutdown")
     client.close()
