@@ -557,34 +557,85 @@ async def extract_with_scraping(url: str) -> ExtractedData:
 
 
 async def extract_with_api_fallback(url: str) -> ExtractedData:
-    """Fallback extraction using external API for sites with anti-bot protection"""
+    """Fallback extraction using Firecrawl API for sites with anti-bot protection"""
     try:
         from urllib.parse import urlparse
+        from firecrawl import FirecrawlApp
+        
         domain = urlparse(url).netloc.lower()
         default_currency = "CLP" if '.cl' in domain else "USD"
         
-        # Use Jina reader API
-        api_url = f"https://r.jina.ai/{url}"
+        firecrawl_key = os.environ.get('FIRECRAWL_API_KEY')
+        if not firecrawl_key:
+            logger.warning("FIRECRAWL_API_KEY not set")
+            return ExtractedData()
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.get(api_url)
-            
-            if response.status_code != 200:
-                logger.warning(f"Jina API failed with status {response.status_code}")
-                return ExtractedData()
-            
-            content = response.text
-            
-            # Check if we got a real page or an error
-            if '403 ERROR' in content or 'Request blocked' in content:
-                logger.warning(f"Site {domain} is protected. Use AI extraction method for better results.")
-                return ExtractedData(
-                    title=f"Protected site ({domain})",
-                    description="This site has anti-bot protection. Try using AI extraction method instead.",
-                    price=None,
-                    currency=default_currency,
-                    image_url=None
-                )
+        logger.info(f"Using Firecrawl for protected site: {domain}")
+        
+        # Initialize Firecrawl
+        app = FirecrawlApp(api_key=firecrawl_key)
+        
+        # Scrape with Firecrawl - it handles anti-bot protection
+        result = app.scrape_url(url, params={
+            'formats': ['markdown', 'html'],
+        })
+        
+        if not result or not result.get('success', True):
+            logger.warning(f"Firecrawl failed for {url}")
+            return ExtractedData()
+        
+        data = result.get('data', result)  # SDK returns data directly
+        markdown = data.get('markdown', '')
+        html_content = data.get('html', '')
+        metadata = data.get('metadata', {})
+        
+        # Extract title from metadata or content
+        title = metadata.get('title') or metadata.get('ogTitle')
+        if title and '|' in title:
+            title = title.split('|')[0].strip()
+        
+        # Extract description
+        description = metadata.get('description') or metadata.get('ogDescription')
+        
+        # Extract image
+        image_url = metadata.get('ogImage')
+        
+        # Extract price from markdown/html content
+        all_prices = []
+        content = markdown + ' ' + html_content
+        
+        # Chilean price patterns: $339.990 or $ 339.990
+        price_patterns = [
+            r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)(?!\d)',  # $339.990 or $ 339.990
+            r'"price"\s*:\s*"?(\d{4,})"?',  # JSON price
+            r'(\d{2,3}(?:\.\d{3})+)\s*(?:CLP|pesos)',  # 339.990 CLP
+        ]
+        
+        for pattern in price_patterns:
+            matches = re.findall(pattern, content)
+            for m in matches:
+                try:
+                    clean_price = m.replace('.', '')
+                    p = float(clean_price)
+                    if p > 1000:
+                        all_prices.append(p)
+                except:
+                    pass
+        
+        price = min(all_prices) if all_prices else None
+        
+        logger.info(f"Firecrawl extraction: title={title}, price={price}, currency={default_currency}")
+        
+        return ExtractedData(
+            title=title[:200] if title else None,
+            description=description[:500] if description else None,
+            price=price,
+            currency=default_currency,
+            image_url=image_url
+        )
+    except Exception as e:
+        logger.error(f"Firecrawl error for {url}: {e}")
+        return ExtractedData()
             
             # Extract title from content
             title = None
