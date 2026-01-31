@@ -474,22 +474,65 @@ async def extract_with_scraping(url: str) -> ExtractedData:
                     data = json.loads(script.string)
                     
                     # Handle array or single object
-                    if isinstance(data, list):
-                        data = data[0] if data else {}
+                    items_to_check = data if isinstance(data, list) else [data]
                     
-                    # Look for price in offers
-                    offers = data.get('offers', data.get('Offers', {}))
-                    if isinstance(offers, list):
-                        offers = offers[0] if offers else {}
-                    
-                    if offers:
-                        price_val = offers.get('price') or offers.get('lowPrice')
-                        if price_val:
-                            price = float(price_val)
-                            currency = offers.get('priceCurrency', default_currency)
+                    for item in items_to_check:
+                        if not isinstance(item, dict):
+                            continue
+                            
+                        # Look for price in offers
+                        offers = item.get('offers', item.get('Offers', {}))
+                        if isinstance(offers, list):
+                            # Get the first valid offer with a price
+                            for offer in offers:
+                                if isinstance(offer, dict):
+                                    price_val = offer.get('price') or offer.get('lowPrice')
+                                    if price_val:
+                                        # Clean price value (remove dots if CLP format)
+                                        if isinstance(price_val, str):
+                                            price_val = price_val.replace('.', '').replace(',', '.')
+                                        price = float(price_val)
+                                        currency = offer.get('priceCurrency', default_currency)
+                                        break
+                        elif isinstance(offers, dict):
+                            price_val = offers.get('price') or offers.get('lowPrice')
+                            if price_val:
+                                if isinstance(price_val, str):
+                                    price_val = price_val.replace('.', '').replace(',', '.')
+                                price = float(price_val)
+                                currency = offers.get('priceCurrency', default_currency)
+                        
+                        if price:
                             break
-                except:
+                    
+                    if price:
+                        break
+                except Exception as json_err:
+                    logger.debug(f"JSON-LD parse error: {json_err}")
                     continue
+            
+            # Also search raw HTML for JSON price patterns (for dynamic sites like Sodimac)
+            if price is None:
+                html_text = str(soup)
+                # Look for "price":"69990" or "price":69990 patterns
+                price_json_patterns = [
+                    r'"price"\s*:\s*"?(\d+)"?\s*[,}]',
+                    r'"lowPrice"\s*:\s*"?(\d+)"?\s*[,}]',
+                    r'"offers"[^}]*"price"\s*:\s*"?(\d+)"?',
+                ]
+                
+                for pattern in price_json_patterns:
+                    matches = re.findall(pattern, html_text)
+                    if matches:
+                        # Get the most common price (likely the main product price)
+                        from collections import Counter
+                        price_counts = Counter(matches)
+                        most_common_price = price_counts.most_common(1)[0][0]
+                        try:
+                            price = float(most_common_price)
+                            break
+                        except:
+                            continue
             
             # If no JSON-LD price, try HTML selectors
             if price is None:
