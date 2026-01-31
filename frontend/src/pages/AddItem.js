@@ -97,7 +97,7 @@ export default function AddItem() {
     // Check if selected channels are configured
     const unconfiguredChannels = channels.filter(ch => !configuredChannels[ch]);
     if (unconfiguredChannels.length > 0) {
-      toast.warning(`Configure ${unconfiguredChannels.join(', ')} in Settings to receive notifications`);
+      toast.warning(`Configura ${unconfiguredChannels.join(', ')} en Ajustes para recibir notificaciones`);
     }
 
     setCreating(true);
@@ -111,18 +111,19 @@ export default function AddItem() {
           url,
           extraction_method: method,
           notification_channels: channels,
+          notes: notes.trim() || null,
         }),
       });
       
       if (response.ok) {
-        toast.success('Item added successfully!');
+        toast.success('¡Item agregado exitosamente!');
         navigate('/dashboard');
       } else {
         const data = await response.json();
-        toast.error(data.detail || 'Failed to create item');
+        toast.error(data.detail || 'Error al crear item');
       }
     } catch (error) {
-      toast.error('Failed to create item');
+      toast.error('Error al crear item');
     } finally {
       setCreating(false);
     }
