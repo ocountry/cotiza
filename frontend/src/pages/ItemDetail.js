@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,10 +31,12 @@ import {
   Mail,
   MessageCircle,
   Send,
+  Phone,
   Sparkles,
   Globe,
   Clock,
-  Calendar
+  Calendar,
+  AlertCircle
 } from 'lucide-react';
 import {
   LineChart,
@@ -51,6 +53,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export default function ItemDetail() {
   const navigate = useNavigate();
   const { itemId } = useParams();
+  const { user } = useAuth();
   const [item, setItem] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,8 +64,15 @@ export default function ItemDetail() {
   // Edit state
   const [method, setMethod] = useState('scraping');
   const [channels, setChannels] = useState(['email']);
-  const [endpoint, setEndpoint] = useState('');
   const [isActive, setIsActive] = useState(true);
+
+  // Check which channels are configured
+  const configuredChannels = {
+    email: !!user?.notification_email,
+    whatsapp: !!user?.notification_whatsapp,
+    telegram: !!user?.notification_telegram,
+    sms: !!user?.notification_sms,
+  };
 
   useEffect(() => {
     fetchItem();
@@ -79,7 +89,6 @@ export default function ItemDetail() {
         setItem(data);
         setMethod(data.extraction_method || 'scraping');
         setChannels(data.notification_channels || ['email']);
-        setEndpoint(data.notification_endpoint || '');
         setIsActive(data.is_active !== false);
       } else if (response.status === 404) {
         toast.error('Item not found');
@@ -117,7 +126,7 @@ export default function ItemDetail() {
       if (response.ok) {
         const data = await response.json();
         if (data.price_changed) {
-          toast.success(`Price changed: $${data.old_price} → $${data.new_price}`);
+          toast.success(`Price changed: ${formatPrice(data.old_price, item?.currency)} → ${formatPrice(data.new_price, item?.currency)}`);
         } else {
           toast.info('Price unchanged');
         }
@@ -146,7 +155,6 @@ export default function ItemDetail() {
         body: JSON.stringify({
           extraction_method: method,
           notification_channels: channels,
-          notification_endpoint: endpoint || null,
           is_active: isActive,
         }),
       });
@@ -195,9 +203,23 @@ export default function ItemDetail() {
 
   const formatPrice = (price, currency = 'USD') => {
     if (price === null || price === undefined) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
+    
+    const currencyConfig = {
+      CLP: { locale: 'es-CL', maximumFractionDigits: 0 },
+      USD: { locale: 'en-US', maximumFractionDigits: 2 },
+      EUR: { locale: 'de-DE', maximumFractionDigits: 2 },
+      MXN: { locale: 'es-MX', maximumFractionDigits: 2 },
+      ARS: { locale: 'es-AR', maximumFractionDigits: 2 },
+      BRL: { locale: 'pt-BR', maximumFractionDigits: 2 },
+      GBP: { locale: 'en-GB', maximumFractionDigits: 2 },
+    };
+    
+    const config = currencyConfig[currency] || currencyConfig.USD;
+    
+    return new Intl.NumberFormat(config.locale, {
       style: 'currency',
       currency,
+      maximumFractionDigits: config.maximumFractionDigits,
     }).format(price);
   };
 
@@ -224,6 +246,13 @@ export default function ItemDetail() {
   const priceChangePercent = history.length >= 2 && history[0].price 
     ? ((priceChange / history[0].price) * 100).toFixed(1)
     : 0;
+
+  const channelsList = [
+    { id: 'email', icon: Mail, label: 'Email', configured: configuredChannels.email },
+    { id: 'whatsapp', icon: MessageCircle, label: 'WhatsApp', configured: configuredChannels.whatsapp },
+    { id: 'telegram', icon: Send, label: 'Telegram', configured: configuredChannels.telegram },
+    { id: 'sms', icon: Phone, label: 'SMS', configured: configuredChannels.sms },
+  ];
 
   if (loading) {
     return (
@@ -322,7 +351,7 @@ export default function ItemDetail() {
             )}
             
             {/* Price */}
-            <div className="flex items-end gap-4 mb-4">
+            <div className="flex items-end gap-4 mb-2">
               <span className="text-4xl md:text-5xl font-heading">
                 {formatPrice(item.current_price, item.currency)}
               </span>
@@ -337,6 +366,10 @@ export default function ItemDetail() {
                 </span>
               )}
             </div>
+            
+            <p className="text-xs text-muted-foreground mb-4">
+              Currency: {item.currency}
+            </p>
             
             <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
@@ -372,7 +405,7 @@ export default function ItemDetail() {
                         <YAxis 
                           stroke="hsl(var(--muted-foreground))"
                           tick={{ fontSize: 12 }}
-                          tickFormatter={(value) => `$${value}`}
+                          tickFormatter={(value) => formatPrice(value, item.currency)}
                         />
                         <Tooltip 
                           contentStyle={{
@@ -380,7 +413,7 @@ export default function ItemDetail() {
                             border: '1px solid hsl(var(--border))',
                             borderRadius: '2px',
                           }}
-                          formatter={(value) => [`$${value}`, 'Price']}
+                          formatter={(value) => [formatPrice(value, item.currency), 'Price']}
                         />
                         <Line 
                           type="monotone" 
@@ -501,61 +534,30 @@ export default function ItemDetail() {
             <Card className="bg-card border border-border/50 rounded-sm">
               <CardHeader>
                 <CardTitle className="font-heading text-lg">Notifications</CardTitle>
+                <CardDescription className="text-xs">
+                  Configure channels in <Link to="/settings" className="text-accent underline">Settings</Link>
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label
-                    className={`flex items-center gap-3 p-3 border rounded-sm cursor-pointer transition-colors ${
-                      channels.includes('email') ? 'border-accent bg-accent/5' : 'border-border'
-                    }`}
-                  >
-                    <Checkbox
-                      checked={channels.includes('email')}
-                      onCheckedChange={() => toggleChannel('email')}
-                    />
-                    <Mail className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
-                    <span className="text-sm">Email</span>
-                  </Label>
-                  
-                  <Label
-                    className={`flex items-center gap-3 p-3 border rounded-sm cursor-pointer transition-colors ${
-                      channels.includes('whatsapp') ? 'border-accent bg-accent/5' : 'border-border'
-                    }`}
-                  >
-                    <Checkbox
-                      checked={channels.includes('whatsapp')}
-                      onCheckedChange={() => toggleChannel('whatsapp')}
-                    />
-                    <MessageCircle className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
-                    <span className="text-sm">WhatsApp</span>
-                  </Label>
-                  
-                  <Label
-                    className={`flex items-center gap-3 p-3 border rounded-sm cursor-pointer transition-colors ${
-                      channels.includes('telegram') ? 'border-accent bg-accent/5' : 'border-border'
-                    }`}
-                  >
-                    <Checkbox
-                      checked={channels.includes('telegram')}
-                      onCheckedChange={() => toggleChannel('telegram')}
-                    />
-                    <Send className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
-                    <span className="text-sm">Telegram</span>
-                  </Label>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="endpoint-edit" className="text-xs text-muted-foreground">
-                    Webhook Endpoint
-                  </Label>
-                  <Input
-                    id="endpoint-edit"
-                    type="url"
-                    placeholder="https://your-server.com/webhook"
-                    value={endpoint}
-                    onChange={(e) => setEndpoint(e.target.value)}
-                    className="h-10 text-sm rounded-sm"
-                  />
+                  {channelsList.map((channel) => (
+                    <Label
+                      key={channel.id}
+                      className={`flex items-center gap-3 p-3 border rounded-sm cursor-pointer transition-colors ${
+                        channels.includes(channel.id) ? 'border-accent bg-accent/5' : 'border-border'
+                      } ${!channel.configured ? 'opacity-60' : ''}`}
+                    >
+                      <Checkbox
+                        checked={channels.includes(channel.id)}
+                        onCheckedChange={() => toggleChannel(channel.id)}
+                      />
+                      <channel.icon className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                      <span className="text-sm flex-1">{channel.label}</span>
+                      {!channel.configured && (
+                        <span className="text-xs text-warning">Not set</span>
+                      )}
+                    </Label>
+                  ))}
                 </div>
                 
                 <Label className="flex items-center gap-3 p-3 border border-border rounded-sm cursor-pointer">
