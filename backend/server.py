@@ -242,6 +242,24 @@ async def logout(request: Request, response: Response):
     response.delete_cookie(key="session_token", path="/")
     return {"message": "Logged out successfully"}
 
+@api_router.put("/auth/profile")
+async def update_profile(update: UpdateUserProfileRequest, user: User = Depends(get_current_user)):
+    """Update user notification settings"""
+    update_data = {k: v for k, v in update.model_dump().items() if v is not None}
+    
+    if update_data:
+        await db.users.update_one(
+            {"user_id": user.user_id},
+            {"$set": update_data}
+        )
+    
+    updated_user = await db.users.find_one(
+        {"user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    return updated_user
+
 # ==================== EXTRACTION SERVICES ====================
 
 def parse_price_and_currency(text: str) -> tuple:
