@@ -495,80 +495,67 @@ async def extract_with_scraping(url: str) -> ExtractedData:
                     if description:
                         break
             
-            # Try to extract price from JSON-LD first (most reliable)
-            price = None
+            # Collect ALL prices from different sources and pick the best one
+            all_found_prices = []
             currency = default_currency
             
+            # Source 1: JSON-LD scripts
             json_ld_scripts = soup.find_all('script', type='application/ld+json')
             for script in json_ld_scripts:
                 try:
                     import json
                     data = json.loads(script.string)
                     
-                    # Handle array or single object
                     items_to_check = data if isinstance(data, list) else [data]
                     
                     for item in items_to_check:
                         if not isinstance(item, dict):
                             continue
                             
-                        # Look for price in offers
                         offers = item.get('offers', item.get('Offers', {}))
-                        if isinstance(offers, list):
-                            # Get the first valid offer with a price
-                            for offer in offers:
-                                if isinstance(offer, dict):
-                                    price_val = offer.get('price') or offer.get('lowPrice')
+                        offers_list = offers if isinstance(offers, list) else [offers] if isinstance(offers, dict) else []
+                        
+                        for offer in offers_list:
+                            if isinstance(offer, dict):
+                                for price_key in ['price', 'lowPrice', 'salePrice']:
+                                    price_val = offer.get(price_key)
                                     if price_val:
-                                        # Clean price value (remove dots if CLP format)
                                         if isinstance(price_val, str):
                                             price_val = price_val.replace('.', '').replace(',', '.')
-                                        price = float(price_val)
-                                        currency = offer.get('priceCurrency', default_currency)
-                                        break
-                        elif isinstance(offers, dict):
-                            price_val = offers.get('price') or offers.get('lowPrice')
-                            if price_val:
-                                if isinstance(price_val, str):
-                                    price_val = price_val.replace('.', '').replace(',', '.')
-                                price = float(price_val)
-                                currency = offers.get('priceCurrency', default_currency)
-                        
-                        if price:
-                            break
-                    
-                    if price:
-                        break
+                                        try:
+                                            p = float(price_val)
+                                            if p > 100:  # Filter out tiny values
+                                                all_found_prices.append(p)
+                                                if offer.get('priceCurrency'):
+                                                    currency = offer.get('priceCurrency')
+                                        except:
+                                            pass
                 except Exception as json_err:
                     logger.debug(f"JSON-LD parse error: {json_err}")
                     continue
             
-            # Also search raw HTML for JSON price patterns (for dynamic sites like Sodimac)
-            if price is None:
-                html_text = response.text  # Use original response text, not soup
-                # Look for "price":"69990" or "price":69990 patterns
-                price_json_patterns = [
-                    r'"price"\s*:\s*"(\d{4,})"',  # "price":"69990"
-                    r'"price"\s*:\s*(\d{4,})[,}]',  # "price":69990
-                    r'"lowPrice"\s*:\s*"?(\d{4,})"?',
-                ]
-                
-                all_prices = []
-                for pattern in price_json_patterns:
-                    matches = re.findall(pattern, html_text)
-                    all_prices.extend(matches)
-                
-                if all_prices:
-                    # Get the most common price or the lowest (likely sale price)
-                    from collections import Counter
-                    price_counts = Counter(all_prices)
-                    # If we have multiple prices, prefer the lower one (sale price)
-                    prices_as_float = [float(p) for p in all_prices if float(p) > 100]
-                    if prices_as_float:
-                        price = min(prices_as_float)  # Get lowest price (sale price)
+            # Source 2: Raw HTML JSON patterns (catches dynamic/JS prices)
+            html_text = response.text
+            price_json_patterns = [
+                r'"price"\s*:\s*"(\d{4,})"',
+                r'"price"\s*:\s*(\d{4,})[,}\]]',
+                r'"lowPrice"\s*:\s*"?(\d{4,})"?',
+                r'"salePrice"\s*:\s*"?(\d{4,})"?',
+            ]
             
-            # If no JSON-LD price, try HTML selectors
-            if price is None:
+            for pattern in price_json_patterns:
+                matches = re.findall(pattern, html_text)
+                for m in matches:
+                    try:
+                        p = float(m)
+                        if p > 100:
+                            all_found_prices.append(p)
+                    except:
+                        pass
+            
+            # Source 3: HTML elements with price class/data
+            price = None
+            if not all_found_prices:
                 price_selectors = [
                     '[class*="price"]', '[data-price]', '[itemprop="price"]',
                     '[class*="Price"]', '[class*="producto-precio"]', '[class*="ProductPrice"]'
@@ -579,30 +566,32 @@ async def extract_with_scraping(url: str) -> ExtractedData:
                 for selector in price_selectors:
                     elements = soup.select(selector)
                     for elem in elements:
-                        # Check data attributes first
                         if elem.get('data-price'):
                             try:
-                                price = float(elem.get('data-price'))
-                                break
+                                p = float(elem.get('data-price'))
+                                if p > 100:
+                                    all_found_prices.append(p)
                             except:
                                 pass
                         if elem.get('content'):
                             try:
-                                price = float(elem.get('content'))
-                                break
+                                p = float(elem.get('content'))
+                                if p > 100:
+                                    all_found_prices.append(p)
                             except:
                                 pass
                         
-                        # Parse text content
                         text = elem.get_text(strip=True)
                         if text:
                             parsed_price, parsed_currency = parse_price_and_currency(text + f" {domain}")
-                            if parsed_price and parsed_price > 0:
-                                price = parsed_price
-                                currency = parsed_currency
-                                break
-                    if price:
-                        break
+                            if parsed_price and parsed_price > 100:
+                                all_found_prices.append(parsed_price)
+                                if parsed_currency != "USD":
+                                    currency = parsed_currency
+            
+            # Pick the best price: lowest (sale price) if we have multiple
+            if all_found_prices:
+                price = min(all_found_prices)
             
             # Last resort: search full page for price patterns
             if price is None:
