@@ -27,7 +27,10 @@ Desarrollar una web que permita a usuarios suscribirse a cambios de precio en pr
 - ✅ Preview de extracción antes de crear item
 - ✅ Verificación manual de precio (/api/items/{id}/check)
 - ✅ Historial de precios (/api/items/{id}/history)
-- ✅ Sistema de notificaciones via webhook
+- ✅ Sistema de notificaciones via webhook (NOTIFICATION_WEBHOOK_URL env var)
+- ✅ **Multi-currency price parsing** (CLP, USD, EUR, MXN, ARS, BRL, GBP)
+- ✅ **User notification channel config** (email, whatsapp, telegram, SMS)
+- ✅ **PUT /api/auth/profile** para actualizar canales de notificación
 
 ### Frontend (React + Tailwind + Shadcn)
 - ✅ Landing page elegante con hero section
@@ -35,10 +38,11 @@ Desarrollar una web que permita a usuarios suscribirse a cambios de precio en pr
 - ✅ Dashboard con lista de items tracked
 - ✅ Formulario para agregar nuevos items
 - ✅ Selector de método de extracción (scraping/AI)
-- ✅ Selector de canales de notificación
+- ✅ Selector de canales de notificación (muestra estado configurado/no configurado)
 - ✅ Vista detallada de item con gráfico de precios
 - ✅ Acciones: actualizar, verificar precio, eliminar
-- ✅ Página de configuración
+- ✅ **Settings con configuración de canales** (email, whatsapp, telegram, SMS)
+- ✅ **Formateo de precios por moneda** (CLP sin decimales, USD/EUR con decimales)
 
 ## Architecture
 ```
