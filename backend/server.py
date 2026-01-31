@@ -639,40 +639,68 @@ async def extract_with_api_fallback(url: str) -> ExtractedData:
 async def extract_with_ai(url: str) -> ExtractedData:
     """Use AI to extract product info from webpage"""
     try:
+        from urllib.parse import urlparse
         from emergentintegrations.llm.chat import LlmChat, UserMessage
         
-        # First get the page content
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client_http:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
-            response = await client_http.get(url, headers=headers)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Remove scripts and styles
-            for tag in soup(['script', 'style', 'noscript']):
-                tag.decompose()
-            
-            # Get clean text (limit to 8000 chars)
-            text_content = soup.get_text(separator=' ', strip=True)[:8000]
+        domain = urlparse(url).netloc.lower()
+        default_currency = "CLP" if '.cl' in domain else "USD"
+        
+        # Try to get page content - first attempt direct scraping
+        text_content = None
+        
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client_http:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                }
+                response = await client_http.get(url, headers=headers)
+                
+                if response.status_code == 200 and len(response.text) > 2000:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    
+                    # Remove scripts and styles
+                    for tag in soup(['script', 'style', 'noscript']):
+                        tag.decompose()
+                    
+                    text_content = soup.get_text(separator=' ', strip=True)[:8000]
+        except:
+            pass
+        
+        # If direct scraping failed, try Jina reader
+        if not text_content or len(text_content) < 500:
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    jina_response = await client.get(f"https://r.jina.ai/{url}")
+                    if jina_response.status_code == 200:
+                        text_content = jina_response.text[:8000]
+            except:
+                pass
+        
+        if not text_content or len(text_content) < 100:
+            logger.warning(f"Could not get content for {url}")
+            return ExtractedData()
         
         api_key = os.environ.get('EMERGENT_LLM_KEY')
         if not api_key:
-            logger.warning("EMERGENT_LLM_KEY not set, falling back to scraping")
-            return await extract_with_scraping(url)
+            logger.warning("EMERGENT_LLM_KEY not set")
+            return ExtractedData()
         
         chat = LlmChat(
             api_key=api_key,
             session_id=f"extract_{uuid.uuid4().hex[:8]}",
-            system_message="""You are a product data extractor. Extract product information from webpage content.
-            Return ONLY a JSON object with these fields:
-            - title: Product title/name
-            - description: Brief product description
-            - price: Numeric price value (no currency symbol)
-            - currency: Currency code (USD, EUR, etc.)
-            - image_url: Product image URL if found
+            system_message=f"""You are a product data extractor for e-commerce sites. 
+            Extract product information from the webpage content.
+            The site domain is {domain}, so the currency is likely {default_currency}.
+            
+            For Chilean prices (CLP), prices are typically in the format $XX.XXX or $XXX.XXX (dots as thousand separators, no decimals).
+            For example: $339.990 means 339990 CLP, $69.990 means 69990 CLP.
+            
+            Return ONLY a valid JSON object with these fields:
+            - title: Product title/name (string)
+            - description: Brief product description (string or null)
+            - price: Numeric price value as INTEGER, no currency symbol, no dots (e.g., 339990 not "339.990")
+            - currency: Currency code (CLP, USD, EUR, etc.)
+            - image_url: Product image URL if found (string or null)
             
             If a field cannot be determined, use null."""
         ).with_model("openai", "gpt-5.2")
