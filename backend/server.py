@@ -67,6 +67,7 @@ class TrackedItem(BaseModel):
     currency: str = "USD"
     extraction_method: str = "scraping"  # "scraping" or "ai"
     notification_channels: List[str] = Field(default_factory=lambda: ["email"])
+    notes: Optional[str] = None  # Optional user notes
     is_active: bool = True
     last_checked: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -83,6 +84,7 @@ class CreateItemRequest(BaseModel):
     url: str
     extraction_method: str = "scraping"
     notification_channels: List[str] = Field(default_factory=lambda: ["email"])
+    notes: Optional[str] = None
 
 class UpdateItemRequest(BaseModel):
     notification_channels: Optional[List[str]] = None
