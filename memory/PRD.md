@@ -31,6 +31,7 @@ Desarrollar una web que permita a usuarios suscribirse a cambios de precio en pr
 - ✅ **Multi-currency price parsing** (CLP, USD, EUR, MXN, ARS, BRL, GBP)
 - ✅ **User notification channel config** (email, whatsapp, telegram, SMS)
 - ✅ **PUT /api/auth/profile** para actualizar canales de notificación
+- ✅ **Campo notes opcional** en TrackedItem para notas del usuario
 
 ### Frontend (React + Tailwind + Shadcn)
 - ✅ Landing page elegante con hero section
@@ -43,6 +44,8 @@ Desarrollar una web que permita a usuarios suscribirse a cambios de precio en pr
 - ✅ Acciones: actualizar, verificar precio, eliminar
 - ✅ **Settings con configuración de canales** (email, whatsapp, telegram, SMS)
 - ✅ **Formateo de precios por moneda** (CLP sin decimales, USD/EUR con decimales)
+- ✅ **Bloqueo de agregar items sin precio detectado** - muestra mensaje de sitio no habilitado
+- ✅ **Campo de notas opcional** al agregar item
 
 ### Extracción de Precios Mejorada (Jan 31)
 - ✅ **Sodimac.cl**: Extrae título, precio (69.990 CLP), descripción e imagen
