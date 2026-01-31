@@ -50,33 +50,20 @@ export default function AddItem() {
 
     setLoadingPreview(true);
     setPreview(null);
-    setShowPasteOption(false);
     
     try {
       const response = await fetch(`${API}/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ 
-          url, 
-          method,
-          pasted_content: pastedContent || null
-        }),
+        body: JSON.stringify({ url, method }),
       });
       
       if (response.ok) {
         const data = await response.json();
         setPreview(data);
-        
-        // Check if site is protected
-        if (data.title?.includes('Protected site') || (!data.price && !data.title)) {
-          setShowPasteOption(true);
-          if (!pastedContent) {
-            toast.warning('This site has anti-bot protection. You can paste the page content to extract data.');
-          }
-        } else if (!data.price && !data.title) {
-          toast.warning('Could not extract data. Try AI extraction or paste the page content.');
-          setShowPasteOption(true);
+        if (!data.price && !data.title) {
+          toast.warning('Could not extract data. Try AI extraction or verify the URL.');
         }
       } else {
         toast.error('Failed to preview URL');
