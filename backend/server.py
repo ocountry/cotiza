@@ -470,29 +470,10 @@ async def extract_with_scraping(url: str) -> ExtractedData:
             
             # ========== PRICE EXTRACTION ==========
             all_prices = []
+            jsonld_price = None  # Priority price from JSON-LD Product
             currency = default_currency
             
-            # Method 1: Search for JSON price patterns in raw HTML
-            price_patterns = [
-                r'"price"\s*:\s*"(\d{4,})"',      # "price":"69990"
-                r'"price"\s*:\s*(\d{4,})[,}\]]',   # "price":69990,
-                r'"lowPrice"\s*:\s*"?(\d{4,})"?',  # lowPrice
-                r'"salePrice"\s*:\s*"?(\d{4,})"?', # salePrice  
-            ]
-            
-            for pattern in price_patterns:
-                matches = re.findall(pattern, html_text)
-                for m in matches:
-                    try:
-                        p = float(m)
-                        if p > 1000:  # Reasonable price threshold
-                            all_prices.append(p)
-                    except:
-                        pass
-            
-            logger.debug(f"Prices from HTML patterns: {all_prices[:5]}")
-            
-            # Method 2: JSON-LD structured data
+            # Method 1: JSON-LD structured data (HIGHEST PRIORITY - most reliable)
             for script in soup.find_all('script', type='application/ld+json'):
                 try:
                     import json
@@ -502,29 +483,73 @@ async def extract_with_scraping(url: str) -> ExtractedData:
                     for item in items:
                         if not isinstance(item, dict):
                             continue
+                        
+                        # Only process Product type (skip Organization, etc)
+                        if item.get('@type') != 'Product':
+                            continue
+                            
                         offers = item.get('offers', {})
                         offers_list = offers if isinstance(offers, list) else [offers]
                         
                         for offer in offers_list:
                             if isinstance(offer, dict):
+                                # Get price - try multiple fields
                                 for key in ['price', 'lowPrice', 'salePrice']:
                                     val = offer.get(key)
                                     if val:
-                                        if isinstance(val, str):
-                                            val = val.replace('.', '').replace(',', '.')
                                         try:
+                                            # Handle string prices like "29.990" (Chilean format)
+                                            if isinstance(val, str):
+                                                # Chilean format: 29.990 means 29990
+                                                if '.' in val and val.replace('.', '').isdigit():
+                                                    val = val.replace('.', '')
+                                                # US format: 29,990.00
+                                                elif ',' in val:
+                                                    val = val.replace(',', '')
                                             p = float(val)
-                                            if p > 1000:
+                                            if 1000 <= p <= 100000000:
+                                                # First valid price from JSON-LD Product is the main price
+                                                if jsonld_price is None:
+                                                    jsonld_price = p
+                                                    logger.debug(f"JSON-LD Product price: {p}")
                                                 all_prices.append(p)
                                         except:
                                             pass
+                                            
+                                # Get currency if available
+                                if offer.get('priceCurrency'):
+                                    currency = offer.get('priceCurrency')
                 except:
                     pass
             
-            logger.debug(f"All found prices: {all_prices[:10]}")
-            
-            # Pick the lowest price (sale price)
-            price = min(all_prices) if all_prices else None
+            # If we got a price from JSON-LD Product, use that (most reliable)
+            if jsonld_price:
+                price = jsonld_price
+                logger.debug(f"Using JSON-LD price: {price}")
+            else:
+                # Method 2: Fallback to JSON price patterns in raw HTML
+                price_patterns = [
+                    r'"price"\s*:\s*"(\d{4,})"',      # "price":"69990"
+                    r'"price"\s*:\s*(\d{4,})[,}\]]',   # "price":69990,
+                    r'"lowPrice"\s*:\s*"?(\d{4,})"?',  # lowPrice
+                    r'"salePrice"\s*:\s*"?(\d{4,})"?', # salePrice  
+                ]
+                
+                for pattern in price_patterns:
+                    matches = re.findall(pattern, html_text)
+                    for m in matches:
+                        try:
+                            p = float(m)
+                            if 1000 <= p <= 100000000:
+                                all_prices.append(p)
+                        except:
+                            pass
+                
+                logger.debug(f"Prices from HTML patterns: {all_prices[:5]}")
+                
+                # Use the FIRST reasonable price found (not minimum)
+                # First price is usually the main product price
+                price = all_prices[0] if all_prices else None
             
             # ========== IMAGE EXTRACTION ==========
             image_url = None
