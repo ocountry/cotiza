@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 
 class PriceTrackingAPITester:
-    def __init__(self, base_url="https://pricespy-92.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://priceguard-6.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.session_token = "test_session_1769837226936"  # From MongoDB setup
         self.user_id = "test-user-1769837226936"
