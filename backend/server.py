@@ -771,6 +771,7 @@ async def create_item(item_req: CreateItemRequest, user: User = Depends(get_curr
         currency=extracted.currency,
         extraction_method=item_req.extraction_method,
         notification_channels=item_req.notification_channels,
+        notes=item_req.notes,
         last_checked=datetime.now(timezone.utc)
     )
     
