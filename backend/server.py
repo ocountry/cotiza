@@ -739,35 +739,62 @@ async def extract_with_firecrawl_cloud(url: str, domain: str, default_currency: 
 
 
 def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
-    """Extract price from markdown content"""
-    all_prices = []
+    """Extract price from markdown content.
     
-    # Chilean price patterns: $339.990 or $ 339.990
-    price_patterns = [
-        r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)(?!\d)',  # $339.990 or $ 339.990
+    Strategy: Find the FIRST price that appears in typical product contexts like:
+    - "Agregar al carrito • $XX.XXX"
+    - "$XX.XXX $YY.YYY Oferta" (current price followed by original)
+    - Price appearing early in the content (main product price)
+    
+    Falls back to the first reasonable price found if no context matches.
+    """
+    
+    # Chilean price pattern: $29.990 or $ 29.990
+    price_pattern = r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)'
+    
+    # First, try to find price in specific product contexts (most reliable)
+    context_patterns = [
+        r'(?:carrito|cart|comprar|buy|añadir|agregar)[^$]*\$\s*([\d]{1,3}(?:\.[\d]{3})+)',  # Add to cart context
+        r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)\s*(?:\$[\d.,]+)?\s*(?:oferta|descuento|off|sale|-\d+%)',  # Sale price (first price before discount indicator)
     ]
     
-    for pattern in price_patterns:
-        matches = re.findall(pattern, markdown)
-        for m in matches:
+    for ctx_pattern in context_patterns:
+        match = re.search(ctx_pattern, markdown, re.IGNORECASE)
+        if match:
             try:
-                clean_price = m.replace('.', '')
-                p = float(clean_price)
-                if p > 10000:  # Reasonable price threshold for Chilean pesos
-                    all_prices.append(p)
+                clean_price = match.group(1).replace('.', '')
+                price = float(clean_price)
+                if 1000 <= price <= 100000000:  # Reasonable range for CLP
+                    logger.debug(f"Found price in context: {price}")
+                    return price
             except:
                 pass
     
-    # For product pages, the main price is usually one of the larger prices
-    price = None
-    if all_prices:
-        unique_prices = sorted(set(all_prices))
-        for p in all_prices:
-            if p > 50000:  # Minimum reasonable product price
-                price = p
-                break
-        if not price:
-            price = min(unique_prices)
+    # Second strategy: Get all prices and use the FIRST one that appears
+    # (product pages typically show main price first)
+    all_matches = list(re.finditer(price_pattern, markdown))
+    
+    if all_matches:
+        # Get unique prices in order of appearance
+        seen_prices = []
+        for match in all_matches:
+            try:
+                clean_price = match.group(1).replace('.', '')
+                price = float(clean_price)
+                # Filter out very small prices (likely shipping, discounts codes)
+                # and unreasonably large ones
+                if 5000 <= price <= 100000000 and price not in seen_prices:
+                    seen_prices.append(price)
+            except:
+                pass
+        
+        if seen_prices:
+            # Return the first reasonable price found
+            # This is typically the main product price on e-commerce sites
+            logger.debug(f"Prices found in order: {seen_prices[:5]}")
+            return seen_prices[0]
+    
+    return None
     
     return price
 
