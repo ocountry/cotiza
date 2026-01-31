@@ -657,7 +657,8 @@ async def check_item_price(item_id: str, user: User = Depends(get_current_user))
     
     # Send notification if price changed
     if price_changed:
-        await send_notification(item, old_price, new_price)
+        user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+        await send_notification(item, old_price, new_price, user_doc)
     
     updated_item = await db.tracked_items.find_one(
         {"item_id": item_id},
