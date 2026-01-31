@@ -854,23 +854,33 @@ def extract_image_from_markdown(markdown: str) -> str:
     """Extract product image URL from markdown when og_image is not available."""
     
     # Look for image URLs in markdown ![alt](url) format
-    # Prioritize product images (usually contain 'product', SKU codes, etc.)
-    img_pattern = r'!\[[^\]]*\]\((https?://[^)]+\.(?:jpg|jpeg|png|webp)[^)]*)\)'
+    # Match URLs with image extensions OR product image CDN patterns
+    img_patterns = [
+        r'!\[[^\]]*\]\((https?://[^)]+\.(?:jpg|jpeg|png|webp|gif)[^)]*)\)',  # Standard image extensions
+        r'!\[[^\]]*\]\((https?://[^)]*(?:product|prd|item)[^)]*)\)',  # Product CDN URLs
+        r'!\[[^\]]*\]\((https?://[^)]+/(?:product-medias|images|media)/[^)]+)\)',  # Media paths
+    ]
     
-    matches = re.findall(img_pattern, markdown, re.IGNORECASE)
+    all_images = []
+    for pattern in img_patterns:
+        matches = re.findall(pattern, markdown, re.IGNORECASE)
+        all_images.extend(matches)
     
-    if matches:
-        # Filter out icons, logos, small images
-        for img_url in matches:
+    if all_images:
+        # Filter out icons, logos, small images, banners
+        for img_url in all_images:
             img_lower = img_url.lower()
             # Skip common non-product images
-            if any(skip in img_lower for skip in ['icon', 'logo', 'banner', 'avatar', 'sprite']):
+            if any(skip in img_lower for skip in ['icon', 'logo', 'banner', 'avatar', 'sprite', 'huincha', 'voladora']):
                 continue
             # Prefer product images
-            if any(prod in img_lower for prod in ['product', 'prd', 'item', 'sku']):
+            if any(prod in img_lower for prod in ['product', 'prd-', '/prd/', 'item', 'sku', 'media']):
                 return img_url
-        # If no product-specific image found, return first valid one
-        return matches[0]
+        
+        # If no product-specific image found, return first valid one that's not a banner
+        for img_url in all_images:
+            if not any(skip in img_url.lower() for skip in ['icon', 'logo', 'banner', 'avatar', 'sprite', 'huincha']):
+                return img_url
     
     return None
 
