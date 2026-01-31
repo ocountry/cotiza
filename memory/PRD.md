@@ -22,7 +22,7 @@ Desarrollar una web que permita a usuarios suscribirse a cambios de precio en pr
 - ✅ Autenticación con Emergent Google OAuth
 - ✅ Modelos: User, UserSession, TrackedItem, PriceHistory
 - ✅ Endpoints CRUD para items (/api/items)
-- ✅ Extracción con scraping básico (BeautifulSoup)
+- ✅ **Extracción mejorada con scraping** (soporta Sodimac, Falabella, sitios chilenos)
 - ✅ Extracción con IA (GPT-5.2 via emergentintegrations)
 - ✅ Preview de extracción antes de crear item
 - ✅ Verificación manual de precio (/api/items/{id}/check)
@@ -43,6 +43,13 @@ Desarrollar una web que permita a usuarios suscribirse a cambios de precio en pr
 - ✅ Acciones: actualizar, verificar precio, eliminar
 - ✅ **Settings con configuración de canales** (email, whatsapp, telegram, SMS)
 - ✅ **Formateo de precios por moneda** (CLP sin decimales, USD/EUR con decimales)
+
+### Extracción de Precios Mejorada (Jan 31)
+- ✅ **Sodimac.cl**: Extrae título, precio (69.990 CLP), descripción e imagen
+- ✅ Detecta precios en formato CLP ($69.990) automáticamente
+- ✅ Busca en JSON-LD y patrones HTML raw
+- ✅ Selecciona el precio más bajo (precio de oferta) cuando hay múltiples
+- ⚠️ **MercadoLibre**: Requiere verificación anti-bot, recomendado usar extracción AI
 
 ## Architecture
 ```
