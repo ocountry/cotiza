@@ -1,34 +1,166 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Vigil - Price Tracking App Styles */
+
+/* Button animations */
+.btn-hover-scale {
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
+.btn-hover-scale:hover {
+    transform: scale(1.02);
+}
+
+/* Card hover effects */
+.card-hover {
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-hover:hover {
+    border-color: hsl(var(--accent) / 0.3);
+    box-shadow: 0 0 30px hsl(var(--accent) / 0.1);
+}
+
+/* Price change indicators */
+.price-up {
+    color: var(--error);
+}
+
+.price-down {
+    color: var(--success);
+}
+
+/* Loading skeleton */
+.skeleton-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
     }
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+/* Hero gradient overlay */
+.hero-gradient {
+    background: linear-gradient(
+        to bottom,
+        hsl(var(--background) / 0.1) 0%,
+        hsl(var(--background) / 0.8) 50%,
+        hsl(var(--background)) 100%
+    );
 }
 
-.App-link {
-    color: #61dafb;
+/* Brand accent glow */
+.brand-glow {
+    box-shadow: 0 0 60px hsl(183 100% 40% / 0.3);
 }
 
-@keyframes App-logo-spin {
+/* Chart customizations */
+.recharts-cartesian-grid line {
+    stroke: hsl(var(--border));
+}
+
+.recharts-text {
+    fill: hsl(var(--muted-foreground));
+    font-family: 'Manrope', sans-serif;
+    font-size: 12px;
+}
+
+/* Input underline style */
+.input-underline {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid hsl(var(--border));
+    border-radius: 0;
+    padding: 1rem 0;
+    transition: border-color 0.3s ease;
+}
+
+.input-underline:focus {
+    border-color: hsl(var(--accent));
+    outline: none;
+    box-shadow: none;
+}
+
+/* Table row hover */
+.table-row-hover {
+    transition: background-color 0.2s ease;
+}
+
+.table-row-hover:hover {
+    background-color: hsl(var(--muted) / 0.5);
+}
+
+/* Status badge animations */
+.status-active {
+    position: relative;
+}
+
+.status-active::before {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.5);
+        opacity: 0.5;
+    }
+}
+
+/* Tooltip custom */
+.tooltip-content {
+    background: hsl(var(--popover));
+    border: 1px solid hsl(var(--border));
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    box-shadow: 0 4px 12px hsl(0 0% 0% / 0.1);
+}
+
+/* Mobile menu animation */
+.mobile-menu-enter {
+    animation: slide-in-right 0.3s ease-out forwards;
+}
+
+@keyframes slide-in-right {
     from {
-        transform: rotate(0deg);
+        transform: translateX(100%);
+        opacity: 0;
     }
     to {
-        transform: rotate(360deg);
+        transform: translateX(0);
+        opacity: 1;
     }
+}
+
+/* Image placeholder */
+.image-placeholder {
+    background: linear-gradient(
+        135deg,
+        hsl(var(--muted)) 0%,
+        hsl(var(--muted-foreground) / 0.1) 100%
+    );
+}
+
+/* Smooth transitions for theme switch */
+* {
+    transition-property: background-color, border-color;
+    transition-duration: 0.2s;
+    transition-timing-function: ease;
+}
+
+/* Override for interactive elements */
+button, a, input, select, textarea {
+    transition-property: color, background-color, border-color, opacity, transform;
 }

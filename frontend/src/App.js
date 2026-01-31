@@ -1,53 +1,100 @@
-import { useEffect } from "react";
+import { useRef } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
+import { Toaster } from "@/components/ui/sonner";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+// Pages
+import LandingPage from "@/pages/LandingPage";
+import Dashboard from "@/pages/Dashboard";
+import AddItem from "@/pages/AddItem";
+import ItemDetail from "@/pages/ItemDetail";
+import Settings from "@/pages/Settings";
+import AuthCallback from "@/pages/AuthCallback";
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  const location = useLocation();
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          <p className="text-muted-foreground font-body text-sm tracking-overline uppercase">Loading</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user && !location.state?.user) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
+const AppRouter = () => {
+  const location = useLocation();
+  const hasProcessedRef = useRef(false);
+
+  // Check for session_id in URL fragment synchronously during render
+  if (location.hash?.includes('session_id=') && !hasProcessedRef.current) {
+    return <AuthCallback />;
+  }
 
   return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/add"
+        element={
+          <ProtectedRoute>
+            <AddItem />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/item/:itemId"
+        element={
+          <ProtectedRoute>
+            <ItemDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 };
 
 function App() {
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRouter />
+          <Toaster position="bottom-right" richColors />
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
