@@ -35,6 +35,8 @@ export default function AddItem() {
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [showPasteOption, setShowPasteOption] = useState(false);
+  const [pastedContent, setPastedContent] = useState('');
 
   // Check which channels are configured
   const configuredChannels = {
