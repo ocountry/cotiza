@@ -415,7 +415,6 @@ async def extract_with_scraping(url: str) -> ExtractedData:
     try:
         from urllib.parse import urlparse
         domain = urlparse(url).netloc.lower()
-        site_config = get_site_config(url)
         
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -428,6 +427,12 @@ async def extract_with_scraping(url: str) -> ExtractedData:
             response.raise_for_status()
             
             html_text = response.text
+            
+            # Check if blocked by CloudFront or similar
+            if '403 ERROR' in html_text or 'Request blocked' in html_text or len(html_text) < 1000:
+                logger.warning(f"Site {domain} blocked direct access, trying alternative method")
+                return await extract_with_api_fallback(url)
+            
             soup = BeautifulSoup(html_text, 'html.parser')
             
             # Default currency for Chilean sites
@@ -536,6 +541,87 @@ async def extract_with_scraping(url: str) -> ExtractedData:
             )
     except Exception as e:
         logger.error(f"Scraping error for {url}: {e}")
+        return ExtractedData()
+
+
+async def extract_with_api_fallback(url: str) -> ExtractedData:
+    """Fallback extraction using external API for sites with anti-bot protection"""
+    try:
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.lower()
+        default_currency = "CLP" if '.cl' in domain else "USD"
+        
+        # Use a web scraping API service
+        api_url = f"https://r.jina.ai/{url}"
+        
+        headers = {
+            "Accept": "text/plain",
+        }
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(api_url, headers=headers)
+            
+            if response.status_code != 200:
+                logger.warning(f"API fallback failed with status {response.status_code}")
+                return ExtractedData()
+            
+            content = response.text
+            
+            # Extract title from content
+            title = None
+            title_match = re.search(r'^Title:\s*(.+)$', content, re.MULTILINE)
+            if title_match:
+                title = title_match.group(1).strip()
+                if '|' in title:
+                    title = title.split('|')[0].strip()
+            
+            # Extract price - look for CLP format
+            price = None
+            # Chilean price patterns: $ 339.990 or $339.990
+            price_patterns = [
+                r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)(?!\d)',  # $ 339.990
+                r'(\d{4,})\s*(?:CLP|pesos)',  # 339990 CLP
+            ]
+            
+            all_prices = []
+            for pattern in price_patterns:
+                matches = re.findall(pattern, content)
+                for m in matches:
+                    try:
+                        # Remove dots (thousand separators)
+                        clean_price = m.replace('.', '')
+                        p = float(clean_price)
+                        if p > 1000:
+                            all_prices.append(p)
+                    except:
+                        pass
+            
+            if all_prices:
+                price = min(all_prices)  # Get lowest (sale) price
+            
+            # Extract description
+            description = None
+            desc_match = re.search(r'^Description:\s*(.+)$', content, re.MULTILINE)
+            if desc_match:
+                description = desc_match.group(1).strip()[:500]
+            
+            # Extract image
+            image_url = None
+            img_match = re.search(r'(https?://[^\s]+\.(?:jpg|jpeg|png|webp))', content, re.IGNORECASE)
+            if img_match:
+                image_url = img_match.group(1)
+            
+            logger.info(f"API fallback extraction: title={title}, price={price}")
+            
+            return ExtractedData(
+                title=title[:200] if title else None,
+                description=description,
+                price=price,
+                currency=default_currency,
+                image_url=image_url
+            )
+    except Exception as e:
+        logger.error(f"API fallback error for {url}: {e}")
         return ExtractedData()
 
 async def extract_with_ai(url: str) -> ExtractedData:
