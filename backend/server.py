@@ -438,17 +438,49 @@ async def extract_with_scraping(url: str) -> ExtractedData:
             if site_config:
                 default_currency = site_config.get('currency', default_currency)
             
-            # Extract title
+            # Extract title - try multiple methods
             title = None
-            title_selectors = ['h1', '[class*="title"]', '[class*="product-name"]', '[class*="ProductName"]', 'title']
-            if site_config:
-                title_selectors = site_config.get('title_selectors', []) + title_selectors
             
-            for selector in title_selectors:
-                elem = soup.select_one(selector)
-                if elem:
-                    title = elem.get_text(strip=True)[:200]
-                    if title and len(title) > 3:
+            # Method 1: og:title meta tag (most reliable for product pages)
+            og_title = soup.find('meta', property='og:title')
+            if og_title and og_title.get('content'):
+                title = og_title.get('content').strip()[:200]
+            
+            # Method 2: title tag
+            if not title:
+                title_tag = soup.find('title')
+                if title_tag:
+                    raw_title = title_tag.get_text(strip=True)
+                    # Clean up title (remove site name suffix like " | Sodimac Chile")
+                    if '|' in raw_title:
+                        title = raw_title.split('|')[0].strip()[:200]
+                    elif ' - ' in raw_title:
+                        title = raw_title.split(' - ')[0].strip()[:200]
+                    else:
+                        title = raw_title[:200]
+            
+            # Method 3: h1 and other selectors
+            if not title or len(title) < 5:
+                title_selectors = ['h1', '[class*="product-name"]', '[class*="ProductName"]', '[itemprop="name"]']
+                if site_config:
+                    title_selectors = site_config.get('title_selectors', []) + title_selectors
+                
+                for selector in title_selectors:
+                    elem = soup.select_one(selector)
+                    if elem:
+                        candidate = elem.get_text(strip=True)[:200]
+                        if candidate and len(candidate) > 5:
+                            title = candidate
+                            break
+            
+            # Method 4: Search in JSON data for product name
+            if not title:
+                name_pattern = r'"name"\s*:\s*"([^"]{10,100})"'
+                name_matches = re.findall(name_pattern, response.text)
+                # Filter out generic names
+                for name in name_matches:
+                    if name and len(name) > 10 and 'sodimac' not in name.lower() and 'category' not in name.lower():
+                        title = name
                         break
             
             # Extract description
