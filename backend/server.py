@@ -795,8 +795,6 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
             return seen_prices[0]
     
     return None
-    
-    return price
 
 
 async def extract_with_ai(url: str) -> ExtractedData:
