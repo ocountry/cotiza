@@ -328,11 +328,33 @@ export default function AddItem() {
                     <channel.icon className="w-5 h-5 text-muted-foreground" strokeWidth={1.5} />
                     <span className="text-sm">{channel.label}</span>
                     {!channel.configured && (
-                      <span className="text-xs text-warning">Not configured</span>
+                      <span className="text-xs text-warning">No configurado</span>
                     )}
                   </Label>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Notes */}
+          <Card className="bg-card border border-border/50 rounded-sm">
+            <CardHeader>
+              <CardTitle className="font-heading text-xl flex items-center gap-2">
+                <StickyNote className="w-5 h-5 text-accent" strokeWidth={1.5} />
+                Notas
+              </CardTitle>
+              <CardDescription>
+                Agrega notas personales sobre este producto (opcional)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                placeholder="Ej: Regalo para mamá, esperar a que baje a $50.000..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="min-h-[100px] resize-none bg-background border-border rounded-sm"
+                data-testid="notes-input"
+              />
             </CardContent>
           </Card>
 
