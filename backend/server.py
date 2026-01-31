@@ -847,7 +847,7 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
                     logger.info(f"Detected price pair pattern: {first} and {second}, using second: {second}")
                     return second
         
-        logger.debug(f"Valid prices found: {valid_prices[:5]}")
+        logger.info(f"Valid prices found: {valid_prices[:5]}")
         return valid_prices[0]
     
     return None
