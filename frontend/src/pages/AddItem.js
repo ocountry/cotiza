@@ -30,6 +30,7 @@ export default function AddItem() {
   const [url, setUrl] = useState('');
   const [method, setMethod] = useState('scraping');
   const [channels, setChannels] = useState(['email']);
+  const [notes, setNotes] = useState('');
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [creating, setCreating] = useState(false);
