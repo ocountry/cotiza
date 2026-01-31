@@ -576,18 +576,15 @@ async def extract_with_api_fallback(url: str) -> ExtractedData:
         app = FirecrawlApp(api_key=firecrawl_key)
         
         # Scrape with Firecrawl - it handles anti-bot protection
-        result = app.scrape_url(url, params={
-            'formats': ['markdown', 'html'],
-        })
+        result = app.scrape(url, formats=['markdown', 'html'])
         
-        if not result or not result.get('success', True):
-            logger.warning(f"Firecrawl failed for {url}")
+        if not result:
+            logger.warning(f"Firecrawl returned empty result for {url}")
             return ExtractedData()
         
-        data = result.get('data', result)  # SDK returns data directly
-        markdown = data.get('markdown', '')
-        html_content = data.get('html', '')
-        metadata = data.get('metadata', {})
+        markdown = result.get('markdown', '')
+        html_content = result.get('html', '')
+        metadata = result.get('metadata', {})
         
         # Extract title from metadata or content
         title = metadata.get('title') or metadata.get('ogTitle')
