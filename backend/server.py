@@ -790,9 +790,12 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
     ]
     
     # First, try to find price in specific product contexts (most reliable)
+    # These patterns need to be VERY close to the keyword to avoid false matches
     context_patterns = [
-        r'(?:carrito|cart|comprar|buy|añadir|agregar)[^$]*\$\s*([\d]{1,3}(?:\.[\d]{3})+)',  # Add to cart context
-        r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)\s*(?:\$[\d.,]+)?\s*(?:oferta|descuento|off|sale|-\d+%)',  # Sale price
+        # Price immediately after "agregar al carro" button text (within ~20 chars)
+        r'(?:carrito|cart|comprar|buy|añadir|agregar)[^$\n]{0,20}\$\s*([\d]{1,3}(?:\.[\d]{3})+)',
+        # Sale price pattern
+        r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)\s*(?:\$[\d.,]+)?\s*(?:oferta|descuento|off|sale|-\d+%)',
     ]
     
     for ctx_pattern in context_patterns:
@@ -801,6 +804,12 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
             try:
                 clean_price = match.group(1).replace('.', '')
                 price = float(clean_price)
+                # Additional check: exclude if "cuota" is nearby
+                start = max(0, match.start() - 50)
+                end = min(len(markdown), match.end() + 50)
+                nearby_context = markdown[start:end].lower()
+                if any(exc in nearby_context for exc in exclude_patterns):
+                    continue
                 if 1000 <= price <= 100000000:
                     logger.info(f"Found price in context pattern: {price}")
                     return price
