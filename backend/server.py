@@ -741,10 +741,12 @@ async def extract_with_firecrawl_cloud(url: str, domain: str, default_currency: 
         if metadata:
             description = metadata.description or metadata.og_description
         
-        # Extract image
+        # Extract image - try og_image first, then extract from markdown
         image_url = None
         if metadata:
             image_url = metadata.og_image
+        if not image_url:
+            image_url = extract_image_from_markdown(markdown)
         
         # Extract price from markdown content
         price = extract_price_from_markdown(markdown, default_currency)
