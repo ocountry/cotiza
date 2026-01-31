@@ -545,6 +545,12 @@ async def extract_with_scraping(url: str) -> ExtractedData:
                 currency=currency,
                 image_url=image_url
             )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code in [403, 503, 429]:
+            logger.warning(f"HTTP {e.response.status_code} for {url}, trying fallback")
+            return await extract_with_api_fallback(url)
+        logger.error(f"HTTP error for {url}: {e}")
+        return ExtractedData()
     except Exception as e:
         logger.error(f"Scraping error for {url}: {e}")
         return ExtractedData()
