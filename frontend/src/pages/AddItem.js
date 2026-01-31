@@ -33,6 +33,7 @@ export default function AddItem() {
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [siteNotSupported, setSiteNotSupported] = useState(false);
 
   // Check which channels are configured
   const configuredChannels = {
