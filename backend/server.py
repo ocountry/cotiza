@@ -417,221 +417,118 @@ async def extract_with_scraping(url: str) -> ExtractedData:
         domain = urlparse(url).netloc.lower()
         site_config = get_site_config(url)
         
-        # Better headers for Chilean e-commerce sites
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
         }
         
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client_http:
             response = await client_http.get(url, headers=headers)
             response.raise_for_status()
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+            html_text = response.text
+            soup = BeautifulSoup(html_text, 'html.parser')
             
-            # Default currency based on domain
-            default_currency = "CLP" if any(cl in domain for cl in ['.cl', 'chile']) else "USD"
-            if site_config:
-                default_currency = site_config.get('currency', default_currency)
+            # Default currency for Chilean sites
+            default_currency = "CLP" if '.cl' in domain else "USD"
             
-            # Extract title - try multiple methods
+            # ========== TITLE EXTRACTION ==========
             title = None
             
-            # Method 1: og:title meta tag (most reliable for product pages)
+            # Try og:title first
             og_title = soup.find('meta', property='og:title')
             if og_title and og_title.get('content'):
-                title = og_title.get('content').strip()[:200]
+                title = og_title.get('content').strip()
+                if '|' in title:
+                    title = title.split('|')[0].strip()
+                logger.debug(f"Title from og:title: {title}")
             
-            # Method 2: title tag
+            # Try title tag
             if not title:
                 title_tag = soup.find('title')
                 if title_tag:
-                    raw_title = title_tag.get_text(strip=True)
-                    # Clean up title (remove site name suffix like " | Sodimac Chile")
-                    if '|' in raw_title:
-                        title = raw_title.split('|')[0].strip()[:200]
-                    elif ' - ' in raw_title:
-                        title = raw_title.split(' - ')[0].strip()[:200]
-                    else:
-                        title = raw_title[:200]
+                    title = title_tag.get_text(strip=True)
+                    if '|' in title:
+                        title = title.split('|')[0].strip()
+                    elif ' - ' in title:
+                        title = title.split(' - ')[0].strip()
+                    logger.debug(f"Title from title tag: {title}")
             
-            # Method 3: h1 and other selectors
-            if not title or len(title) < 5:
-                title_selectors = ['h1', '[class*="product-name"]', '[class*="ProductName"]', '[itemprop="name"]']
-                if site_config:
-                    title_selectors = site_config.get('title_selectors', []) + title_selectors
-                
-                for selector in title_selectors:
-                    elem = soup.select_one(selector)
-                    if elem:
-                        candidate = elem.get_text(strip=True)[:200]
-                        if candidate and len(candidate) > 5:
-                            title = candidate
-                            break
-            
-            # Method 4: Search in JSON data for product name
-            if not title:
-                name_pattern = r'"name"\s*:\s*"([^"]{10,100})"'
-                name_matches = re.findall(name_pattern, response.text)
-                # Filter out generic names
-                for name in name_matches:
-                    if name and len(name) > 10 and 'sodimac' not in name.lower() and 'category' not in name.lower():
-                        title = name
-                        break
-            
-            # Extract description
-            description = None
-            for selector in ['[class*="description"]', '[class*="product-desc"]', 'meta[name="description"]', '[class*="ProductDescription"]']:
-                elem = soup.select_one(selector)
-                if elem:
-                    if elem.name == 'meta':
-                        description = elem.get('content', '')[:500]
-                    else:
-                        description = elem.get_text(strip=True)[:500]
-                    if description:
-                        break
-            
-            # Collect ALL prices from different sources and pick the best one
-            all_found_prices = []
+            # ========== PRICE EXTRACTION ==========
+            all_prices = []
             currency = default_currency
             
-            # Source 1: JSON-LD scripts
-            json_ld_scripts = soup.find_all('script', type='application/ld+json')
-            for script in json_ld_scripts:
-                try:
-                    import json
-                    data = json.loads(script.string)
-                    
-                    items_to_check = data if isinstance(data, list) else [data]
-                    
-                    for item in items_to_check:
-                        if not isinstance(item, dict):
-                            continue
-                            
-                        offers = item.get('offers', item.get('Offers', {}))
-                        offers_list = offers if isinstance(offers, list) else [offers] if isinstance(offers, dict) else []
-                        
-                        for offer in offers_list:
-                            if isinstance(offer, dict):
-                                for price_key in ['price', 'lowPrice', 'salePrice']:
-                                    price_val = offer.get(price_key)
-                                    if price_val:
-                                        if isinstance(price_val, str):
-                                            price_val = price_val.replace('.', '').replace(',', '.')
-                                        try:
-                                            p = float(price_val)
-                                            if p > 100:  # Filter out tiny values
-                                                all_found_prices.append(p)
-                                                if offer.get('priceCurrency'):
-                                                    currency = offer.get('priceCurrency')
-                                        except:
-                                            pass
-                except Exception as json_err:
-                    logger.debug(f"JSON-LD parse error: {json_err}")
-                    continue
-            
-            # Source 2: Raw HTML JSON patterns (catches dynamic/JS prices)
-            html_text = response.text
-            price_json_patterns = [
-                r'"price"\s*:\s*"(\d{4,})"',
-                r'"price"\s*:\s*(\d{4,})[,}\]]',
-                r'"lowPrice"\s*:\s*"?(\d{4,})"?',
-                r'"salePrice"\s*:\s*"?(\d{4,})"?',
+            # Method 1: Search for JSON price patterns in raw HTML
+            price_patterns = [
+                r'"price"\s*:\s*"(\d{4,})"',      # "price":"69990"
+                r'"price"\s*:\s*(\d{4,})[,}\]]',   # "price":69990,
+                r'"lowPrice"\s*:\s*"?(\d{4,})"?',  # lowPrice
+                r'"salePrice"\s*:\s*"?(\d{4,})"?', # salePrice  
             ]
             
-            for pattern in price_json_patterns:
+            for pattern in price_patterns:
                 matches = re.findall(pattern, html_text)
                 for m in matches:
                     try:
                         p = float(m)
-                        if p > 100:
-                            all_found_prices.append(p)
+                        if p > 1000:  # Reasonable price threshold
+                            all_prices.append(p)
                     except:
                         pass
             
-            # Source 3: HTML elements with price class/data
-            price = None
-            if not all_found_prices:
-                price_selectors = [
-                    '[class*="price"]', '[data-price]', '[itemprop="price"]',
-                    '[class*="Price"]', '[class*="producto-precio"]', '[class*="ProductPrice"]'
-                ]
-                if site_config:
-                    price_selectors = site_config.get('price_selectors', []) + price_selectors
-                
-                for selector in price_selectors:
-                    elements = soup.select(selector)
-                    for elem in elements:
-                        if elem.get('data-price'):
-                            try:
-                                p = float(elem.get('data-price'))
-                                if p > 100:
-                                    all_found_prices.append(p)
-                            except:
-                                pass
-                        if elem.get('content'):
-                            try:
-                                p = float(elem.get('content'))
-                                if p > 100:
-                                    all_found_prices.append(p)
-                            except:
-                                pass
+            logger.debug(f"Prices from HTML patterns: {all_prices[:5]}")
+            
+            # Method 2: JSON-LD structured data
+            for script in soup.find_all('script', type='application/ld+json'):
+                try:
+                    import json
+                    data = json.loads(script.string)
+                    items = data if isinstance(data, list) else [data]
+                    
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        offers = item.get('offers', {})
+                        offers_list = offers if isinstance(offers, list) else [offers]
                         
-                        text = elem.get_text(strip=True)
-                        if text:
-                            parsed_price, parsed_currency = parse_price_and_currency(text + f" {domain}")
-                            if parsed_price and parsed_price > 100:
-                                all_found_prices.append(parsed_price)
-                                if parsed_currency != "USD":
-                                    currency = parsed_currency
+                        for offer in offers_list:
+                            if isinstance(offer, dict):
+                                for key in ['price', 'lowPrice', 'salePrice']:
+                                    val = offer.get(key)
+                                    if val:
+                                        if isinstance(val, str):
+                                            val = val.replace('.', '').replace(',', '.')
+                                        try:
+                                            p = float(val)
+                                            if p > 1000:
+                                                all_prices.append(p)
+                                        except:
+                                            pass
+                except:
+                    pass
             
-            # Pick the best price: lowest (sale price) if we have multiple
-            if all_found_prices:
-                price = min(all_found_prices)
+            logger.debug(f"All found prices: {all_prices[:10]}")
             
-            # Last resort: search full page for price patterns
-            if price is None:
-                full_text = soup.get_text()
-                # Add domain context for currency detection
-                parsed_price, parsed_currency = parse_price_and_currency(full_text[:5000] + f" {domain}")
-                if parsed_price:
-                    price = parsed_price
-                    currency = parsed_currency
+            # Pick the lowest price (sale price)
+            price = min(all_prices) if all_prices else None
             
-            # Extract image
+            # ========== IMAGE EXTRACTION ==========
             image_url = None
-            image_selectors = [
-                'meta[property="og:image"]',
-                '[class*="product"] img',
-                '[class*="gallery"] img', 
-                'img[itemprop="image"]',
-                '[class*="ProductImage"] img',
-                '.product-image img'
-            ]
+            og_image = soup.find('meta', property='og:image')
+            if og_image and og_image.get('content'):
+                image_url = og_image.get('content')
             
-            for selector in image_selectors:
-                elem = soup.select_one(selector)
-                if elem:
-                    if elem.name == 'meta':
-                        image_url = elem.get('content')
-                    else:
-                        image_url = elem.get('src') or elem.get('data-src') or elem.get('data-lazy-src')
-                    if image_url:
-                        if not image_url.startswith('http'):
-                            from urllib.parse import urljoin
-                            image_url = urljoin(url, image_url)
-                        # Skip placeholder images
-                        if 'placeholder' not in image_url.lower() and 'default' not in image_url.lower():
-                            break
-                        else:
-                            image_url = None
+            # ========== DESCRIPTION ==========
+            description = None
+            meta_desc = soup.find('meta', attrs={'name': 'description'})
+            if meta_desc and meta_desc.get('content'):
+                description = meta_desc.get('content')[:500]
+            
+            logger.info(f"Final extraction: title={title}, price={price}, currency={currency}")
             
             return ExtractedData(
-                title=title,
+                title=title[:200] if title else None,
                 description=description,
                 price=price,
                 currency=currency,
