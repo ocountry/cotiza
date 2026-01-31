@@ -45,12 +45,13 @@ export default function AddItem() {
 
   const handlePreview = async () => {
     if (!url.trim()) {
-      toast.error('Please enter a URL');
+      toast.error('Por favor ingresa una URL');
       return;
     }
 
     setLoadingPreview(true);
     setPreview(null);
+    setSiteNotSupported(false);
     
     try {
       const response = await fetch(`${API}/preview`, {
@@ -63,14 +64,17 @@ export default function AddItem() {
       if (response.ok) {
         const data = await response.json();
         setPreview(data);
-        if (!data.price && !data.title) {
-          toast.warning('Could not extract data. Try AI extraction or verify the URL.');
+        
+        // Check if price was detected - if not, mark site as not supported
+        if (data.price === null || data.price === undefined) {
+          setSiteNotSupported(true);
         }
       } else {
-        toast.error('Failed to preview URL');
+        toast.error('Error al obtener vista previa');
+        setSiteNotSupported(true);
       }
     } catch (error) {
-      toast.error('Failed to connect to server');
+      toast.error('Error de conexión con el servidor');
     } finally {
       setLoadingPreview(false);
     }
