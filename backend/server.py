@@ -989,13 +989,17 @@ async def preview_extraction(request: Request, user: User = Depends(get_current_
     body = await request.json()
     url = body.get('url')
     method = body.get('method', 'scraping')
+    pasted_content = body.get('pasted_content')  # Optional: user-provided content
     
-    logger.info(f"Preview request: url={url}, method={method}")
+    logger.info(f"Preview request: url={url}, method={method}, has_pasted_content={bool(pasted_content)}")
     
     if not url:
         raise HTTPException(status_code=400, detail="URL required")
     
-    if method == "ai":
+    # If user provided pasted content, use AI to analyze it
+    if pasted_content and len(pasted_content) > 100:
+        extracted = await extract_from_pasted_content(url, pasted_content)
+    elif method == "ai":
         extracted = await extract_with_ai(url)
     else:
         extracted = await extract_with_scraping(url)
@@ -1003,6 +1007,63 @@ async def preview_extraction(request: Request, user: User = Depends(get_current_
     logger.info(f"Extraction result: title={extracted.title}, price={extracted.price}, currency={extracted.currency}")
     
     return extracted.model_dump()
+
+
+async def extract_from_pasted_content(url: str, content: str) -> ExtractedData:
+    """Extract product info from user-pasted content using AI"""
+    try:
+        from urllib.parse import urlparse
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        domain = urlparse(url).netloc.lower()
+        default_currency = "CLP" if '.cl' in domain else "USD"
+        
+        api_key = os.environ.get('EMERGENT_LLM_KEY')
+        if not api_key:
+            logger.warning("EMERGENT_LLM_KEY not set")
+            return ExtractedData()
+        
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"extract_{uuid.uuid4().hex[:8]}",
+            system_message=f"""You are a product data extractor for e-commerce sites. 
+            Extract product information from the user-provided webpage content.
+            The site domain is {domain}, so the currency is likely {default_currency}.
+            
+            For Chilean prices (CLP), prices are in format $XX.XXX or $XXX.XXX (dots = thousands, no decimals).
+            Example: $339.990 = 339990 CLP, $69.990 = 69990 CLP.
+            
+            Return ONLY a valid JSON object:
+            {{"title": "product name", "description": "brief description or null", "price": numeric_integer, "currency": "CLP", "image_url": "url or null"}}
+            
+            Price must be an INTEGER without dots or separators."""
+        ).with_model("openai", "gpt-5.2")
+        
+        user_message = UserMessage(
+            text=f"Extract product info from this content:\n\n{content[:8000]}"
+        )
+        
+        response_text = await chat.send_message(user_message)
+        
+        # Parse JSON response
+        import json
+        response_text = response_text.strip()
+        if response_text.startswith('```'):
+            response_text = re.sub(r'^```\w*\n?', '', response_text)
+            response_text = re.sub(r'\n?```$', '', response_text)
+        
+        data = json.loads(response_text)
+        
+        return ExtractedData(
+            title=data.get('title'),
+            description=data.get('description'),
+            price=float(data['price']) if data.get('price') else None,
+            currency=data.get('currency', default_currency),
+            image_url=data.get('image_url')
+        )
+    except Exception as e:
+        logger.error(f"Pasted content extraction error: {e}")
+        return ExtractedData()
 
 # ==================== ROOT ENDPOINT ====================
 
