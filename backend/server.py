@@ -401,7 +401,7 @@ async def extract_with_ai(url: str) -> ExtractedData:
 
 # ==================== ITEM ENDPOINTS ====================
 
-@api_router.post("/items")
+@api_router.post("/items", status_code=201)
 async def create_item(item_req: CreateItemRequest, user: User = Depends(get_current_user)):
     """Create a new tracked item"""
     # Extract data based on method
