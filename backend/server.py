@@ -587,8 +587,11 @@ async def extract_with_api_fallback(url: str) -> ExtractedData:
         return ExtractedData()
 
 
+
 async def extract_with_firecrawl_selfhosted(url: str, domain: str, default_currency: str) -> ExtractedData:
-    """Extract using self-hosted Firecrawl instance"""
+    """Extract using self-hosted Firecrawl instance.
+    Falls back to cloud version if anti-bot error is detected.
+    """
     try:
         selfhosted_url = os.environ.get('FIRECRAWL_SELFHOSTED_URL')
         if not selfhosted_url:
@@ -608,12 +611,37 @@ async def extract_with_firecrawl_selfhosted(url: str, domain: str, default_curre
             )
             
             if response.status_code != 200:
-                logger.warning(f"Firecrawl self-hosted returned status {response.status_code}")
-                return ExtractedData()
+                logger.warning(f"Firecrawl self-hosted returned status {response.status_code}, falling back to cloud")
+                return await extract_with_firecrawl_cloud(url, domain, default_currency)
             
             result = response.json()
             
-            if not result or not result.get('data'):
+            # Check for anti-bot or other blocking errors - fallback to cloud
+            if result.get('success') == False:
+                error_code = result.get('code', '')
+                error_msg = result.get('error', '')
+                
+                # List of error codes that should trigger cloud fallback
+                antibot_errors = [
+                    'SCRAPE_DOCUMENT_ANTIBOT_ERROR',
+                    'ANTIBOT',
+                    'BLOCKED',
+                    'CAPTCHA',
+                    'ACCESS_DENIED',
+                    'FORBIDDEN'
+                ]
+                
+                should_fallback = any(err in error_code.upper() for err in antibot_errors) or \
+                                  any(err.lower() in error_msg.lower() for err in ['anti-bot', 'blocked', 'captcha', 'forbidden'])
+                
+                if should_fallback:
+                    logger.warning(f"Firecrawl self-hosted blocked ({error_code}), falling back to CLOUD for: {domain}")
+                    return await extract_with_firecrawl_cloud(url, domain, default_currency)
+                else:
+                    logger.warning(f"Firecrawl self-hosted error: {error_code} - {error_msg}")
+                    return ExtractedData()
+            
+            if not result.get('data'):
                 logger.warning(f"Firecrawl self-hosted returned empty result for {url}")
                 return ExtractedData()
             
@@ -645,8 +673,9 @@ async def extract_with_firecrawl_selfhosted(url: str, domain: str, default_curre
                 image_url=image_url
             )
     except Exception as e:
-        logger.error(f"Firecrawl self-hosted error for {url}: {e}")
-        return ExtractedData()
+        logger.error(f"Firecrawl self-hosted error for {url}: {e}, falling back to cloud")
+        return await extract_with_firecrawl_cloud(url, domain, default_currency)
+
 
 
 async def extract_with_firecrawl_cloud(url: str, domain: str, default_currency: str) -> ExtractedData:
