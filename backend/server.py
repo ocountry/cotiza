@@ -960,6 +960,8 @@ async def preview_extraction(request: Request, user: User = Depends(get_current_
     url = body.get('url')
     method = body.get('method', 'scraping')
     
+    logger.info(f"Preview request: url={url}, method={method}")
+    
     if not url:
         raise HTTPException(status_code=400, detail="URL required")
     
@@ -967,6 +969,8 @@ async def preview_extraction(request: Request, user: User = Depends(get_current_
         extracted = await extract_with_ai(url)
     else:
         extracted = await extract_with_scraping(url)
+    
+    logger.info(f"Extraction result: title={extracted.title}, price={extracted.price}, currency={extracted.currency}")
     
     return extracted.model_dump()
 
