@@ -780,13 +780,13 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
     # Chilean price pattern: $29.990 or $ 29.990
     price_pattern = r'\$\s*([\d]{1,3}(?:\.[\d]{3})+)'
     
-    # Patterns to EXCLUDE (installments, financing, etc.)
+    # Patterns to EXCLUDE (installments, financing, etc.) - all lowercase for comparison
     exclude_patterns = [
-        r'cuota',
-        r'mensual',
-        r'CAE',
-        r'costo total',
-        r'financ',
+        'cuota',
+        'mensual',
+        'cae',
+        'costo total',
+        'financ',
     ]
     
     # First, try to find price in specific product contexts (most reliable)
@@ -802,13 +802,14 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
                 clean_price = match.group(1).replace('.', '')
                 price = float(clean_price)
                 if 1000 <= price <= 100000000:
-                    logger.debug(f"Found price in context: {price}")
+                    logger.info(f"Found price in context pattern: {price}")
                     return price
             except:
                 pass
     
     # Second strategy: Find all prices with their context and filter
     all_matches = list(re.finditer(price_pattern, markdown))
+    logger.info(f"Total price matches found: {len(all_matches)}")
     
     valid_prices = []
     for match in all_matches:
@@ -821,6 +822,7 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
             # Skip if context contains exclusion patterns
             should_exclude = any(exc in context for exc in exclude_patterns)
             if should_exclude:
+                logger.debug(f"Excluding price {match.group(1)} due to context")
                 continue
             
             clean_price = match.group(1).replace('.', '')
@@ -831,6 +833,8 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
                 valid_prices.append(price)
         except:
             pass
+    
+    logger.info(f"Valid prices after filtering: {valid_prices[:10]}")
     
     if valid_prices:
         # Check for special price / regular price pattern common in Chilean stores
@@ -847,7 +851,6 @@ def extract_price_from_markdown(markdown: str, default_currency: str) -> float:
                     logger.info(f"Detected price pair pattern: {first} and {second}, using second: {second}")
                     return second
         
-        logger.info(f"Valid prices found: {valid_prices[:5]}")
         return valid_prices[0]
     
     return None
