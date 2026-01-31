@@ -92,9 +92,23 @@ export default function Dashboard() {
 
   const formatPrice = (price, currency = 'USD') => {
     if (price === null || price === undefined) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
+    
+    const currencyConfig = {
+      CLP: { locale: 'es-CL', maximumFractionDigits: 0 },
+      USD: { locale: 'en-US', maximumFractionDigits: 2 },
+      EUR: { locale: 'de-DE', maximumFractionDigits: 2 },
+      MXN: { locale: 'es-MX', maximumFractionDigits: 2 },
+      ARS: { locale: 'es-AR', maximumFractionDigits: 2 },
+      BRL: { locale: 'pt-BR', maximumFractionDigits: 2 },
+      GBP: { locale: 'en-GB', maximumFractionDigits: 2 },
+    };
+    
+    const config = currencyConfig[currency] || currencyConfig.USD;
+    
+    return new Intl.NumberFormat(config.locale, {
       style: 'currency',
       currency,
+      maximumFractionDigits: config.maximumFractionDigits,
     }).format(price);
   };
 
