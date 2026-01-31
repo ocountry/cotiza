@@ -397,18 +397,20 @@ export default function AddItem() {
               onClick={() => navigate('/dashboard')}
               className="rounded-full h-12 px-8 uppercase tracking-widest text-xs font-bold"
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={creating || !url.trim()}
+              disabled={creating || !url.trim() || siteNotSupported}
               className="flex-1 rounded-full h-12 px-8 uppercase tracking-widest text-xs font-bold btn-hover-scale"
               data-testid="create-btn"
             >
               {creating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
+              ) : siteNotSupported ? (
+                'Sitio no soportado'
               ) : (
-                'Start Tracking'
+                'Comenzar a Rastrear'
               )}
             </Button>
           </div>
