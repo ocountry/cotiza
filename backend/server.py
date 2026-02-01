@@ -1334,23 +1334,6 @@ async def extract_from_pasted_content(url: str, content: str) -> ExtractedData:
         logger.error(f"Pasted content extraction error: {e}")
         return ExtractedData()
 
-# ==================== ROOT ENDPOINT ====================
-
-@api_router.get("/")
-async def root():
-    return {"message": "Vigil API - Price Tracking Service"}
-
-# Include the router in the main app
-app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # ==================== PRICE CHECK CRON JOB ====================
 
 scheduler = AsyncIOScheduler()
@@ -1459,9 +1442,26 @@ async def get_cron_status():
 @api_router.post("/cron/trigger")
 async def trigger_price_check(user: User = Depends(get_current_user)):
     """Manually trigger a price check for all items (admin only)"""
-    # Run in background to not block the response
     asyncio.create_task(check_all_prices())
     return {"message": "Price check triggered", "status": "running"}
+
+
+# ==================== ROOT ENDPOINT ====================
+
+@api_router.get("/")
+async def root():
+    return {"message": "Vigil API - Price Tracking Service"}
+
+# Include the router in the main app
+app.include_router(api_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
