@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
   const { processSession } = useAuth();
+  const [searchParams] = useSearchParams();
   const hasProcessed = useRef(false);
 
   useEffect(() => {
@@ -13,18 +14,17 @@ export default function AuthCallback() {
     hasProcessed.current = true;
 
     const handleCallback = async () => {
-      const hash = window.location.hash;
-      const sessionIdMatch = hash.match(/session_id=([^&]+)/);
-      
-      if (sessionIdMatch) {
-        const sessionId = sessionIdMatch[1];
-        const user = await processSession(sessionId);
-        
-        // Clear the hash from URL
+      // Check for token in search params (new Google OAuth flow)
+      const token = searchParams.get('token');
+
+      if (token) {
+        const user = await processSession(token);
+
+        // Clear the token from URL
         window.history.replaceState(null, '', window.location.pathname);
-        
+
         if (user) {
-          navigate('/dashboard', { state: { user }, replace: true });
+          navigate('/dashboard', { replace: true });
         } else {
           navigate('/', { replace: true });
         }
@@ -34,7 +34,7 @@ export default function AuthCallback() {
     };
 
     handleCallback();
-  }, [navigate, processSession]);
+  }, [navigate, processSession, searchParams]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

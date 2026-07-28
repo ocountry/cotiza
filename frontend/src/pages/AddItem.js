@@ -9,8 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { 
-  TrendingDown, 
+import {
+  TrendingDown,
   ArrowLeft,
   Globe,
   Sparkles,
@@ -23,8 +23,7 @@ import {
   AlertCircle,
   StickyNote
 } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { apiFetch } from '@/lib/api';
 
 export default function AddItem() {
   const navigate = useNavigate();
@@ -57,7 +56,7 @@ export default function AddItem() {
     setSiteNotSupported(false);
     
     try {
-      const response = await fetch(`${API}/preview`, {
+      const response = await apiFetch('/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -103,7 +102,7 @@ export default function AddItem() {
     setCreating(true);
     
     try {
-      const response = await fetch(`${API}/items`, {
+      const response = await apiFetch('/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

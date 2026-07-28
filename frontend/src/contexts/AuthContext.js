@@ -12,16 +12,32 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('vigil_session_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
+
   const checkAuth = async () => {
+    const token = localStorage.getItem('vigil_session_token');
+    if (!token) {
+      setLoading(false);
+      setUser(null);
+      return;
+    }
+
     try {
       const response = await fetch(`${API}/auth/me`, {
         credentials: 'include',
+        headers: {
+          ...getAuthHeaders(),
+        },
       });
-      
+
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
       } else {
+        localStorage.removeItem('vigil_session_token');
         setUser(null);
       }
     } catch (error) {
@@ -33,9 +49,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = () => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + '/dashboard';
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    window.location.href = `${API}/auth/google/login`;
   };
 
   const logout = async () => {
@@ -43,29 +57,35 @@ export const AuthProvider = ({ children }) => {
       await fetch(`${API}/auth/logout`, {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          ...getAuthHeaders(),
+        },
       });
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      localStorage.removeItem('vigil_session_token');
       setUser(null);
     }
   };
 
-  const processSession = async (sessionId) => {
+  const processSession = async (token) => {
+    if (!token) return null;
+
+    localStorage.setItem('vigil_session_token', token);
+
     try {
-      const response = await fetch(`${API}/auth/session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const response = await fetch(`${API}/auth/me`, {
         credentials: 'include',
-        body: JSON.stringify({ session_id: sessionId }),
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-        return data.user;
+        const userData = await response.json();
+        setUser(userData);
+        return userData;
       }
       return null;
     } catch (error) {
@@ -75,7 +95,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, processSession, checkAuth }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, processSession, checkAuth, getAuthHeaders }}>
       {children}
     </AuthContext.Provider>
   );

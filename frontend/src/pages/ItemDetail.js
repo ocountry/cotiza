@@ -19,8 +19,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { 
-  TrendingDown, 
+import {
+  TrendingDown,
   TrendingUp,
   ArrowLeft,
   ExternalLink,
@@ -38,6 +38,7 @@ import {
   Calendar,
   AlertCircle
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import {
   LineChart,
   Line,
@@ -47,8 +48,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function ItemDetail() {
   const navigate = useNavigate();
@@ -81,7 +80,7 @@ export default function ItemDetail() {
 
   const fetchItem = async () => {
     try {
-      const response = await fetch(`${API}/items/${itemId}`, {
+      const response = await apiFetch(`/items/${itemId}`, {
         credentials: 'include',
       });
       if (response.ok) {
@@ -103,7 +102,7 @@ export default function ItemDetail() {
 
   const fetchHistory = async () => {
     try {
-      const response = await fetch(`${API}/items/${itemId}/history`, {
+      const response = await apiFetch(`/items/${itemId}/history`, {
         credentials: 'include',
       });
       if (response.ok) {
@@ -118,7 +117,7 @@ export default function ItemDetail() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const response = await fetch(`${API}/items/${itemId}/check`, {
+      const response = await apiFetch(`/items/${itemId}/check`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -148,7 +147,7 @@ export default function ItemDetail() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API}/items/${itemId}`, {
+      const response = await apiFetch(`/items/${itemId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -175,7 +174,7 @@ export default function ItemDetail() {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const response = await fetch(`${API}/items/${itemId}`, {
+      const response = await apiFetch(`/items/${itemId}`, {
         method: 'DELETE',
         credentials: 'include',
       });

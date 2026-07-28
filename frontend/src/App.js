@@ -35,14 +35,6 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const AppRouter = () => {
-  const location = useLocation();
-
-  // Check for session_id in URL fragment - this handles the OAuth callback
-  // The session_id comes as a hash fragment: /dashboard#session_id=xxx
-  if (location.hash?.includes('session_id=')) {
-    return <AuthCallback />;
-  }
-
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />

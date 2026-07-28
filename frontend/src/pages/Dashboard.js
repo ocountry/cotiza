@@ -14,9 +14,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { 
-  Plus, 
-  TrendingDown, 
+import {
+  Plus,
+  TrendingDown,
   TrendingUp,
   ExternalLink,
   RefreshCw,
@@ -30,8 +30,7 @@ import {
   Sparkles,
   Globe
 } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { apiFetch } from '@/lib/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -47,7 +46,7 @@ export default function Dashboard() {
 
   const fetchItems = async () => {
     try {
-      const response = await fetch(`${API}/items`, {
+      const response = await apiFetch('/items', {
         credentials: 'include',
       });
       if (response.ok) {
@@ -64,7 +63,7 @@ export default function Dashboard() {
   const handleRefresh = async (itemId) => {
     setRefreshingId(itemId);
     try {
-      const response = await fetch(`${API}/items/${itemId}/check`, {
+      const response = await apiFetch(`/items/${itemId}/check`, {
         method: 'POST',
         credentials: 'include',
       });

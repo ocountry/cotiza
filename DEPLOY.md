@@ -1,5 +1,86 @@
 # Guía de Instalación - Vigil Price Tracker
 
+## 🐳 Docker (Método Rápido)
+
+La forma más rápida de levantar la aplicación completa es con Docker Compose.
+
+### Requisitos
+- Docker 24+ y Docker Compose v2
+
+### Configurar variables de entorno
+
+```bash
+cp .env.docker .env
+# Editar .env con tus credenciales de Google OAuth
+# GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET son REQUERIDOS
+```
+
+### Iniciar
+
+```bash
+docker compose up -d
+```
+
+### Detener
+
+```bash
+docker compose down
+```
+
+### Ver logs
+
+```bash
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f mongodb
+```
+
+### Reconstruir después de cambios
+
+```bash
+docker compose up -d --build
+```
+
+### 🖥️ Despliegue con CloudPanel
+
+Si tienes CloudPanel en el servidor, sigue estos pasos para que Vigil no interfiera con otros servicios:
+
+1. **Configurar** (solo una vez):
+   ```bash
+   cp .env.docker .env
+   # Editar VIGIL_PORT si 3000 está ocupado
+   ```
+
+2. **Iniciar Vigil**:
+   ```bash
+   docker compose up -d
+   # Vigil queda en http://127.0.0.1:3000 (no expuesto al exterior)
+   ```
+
+3. **Crear sitio en CloudPanel**:
+   - Ve a CloudPanel → **Sites** → **Add Site**
+   - Crea un subdominio: `vigil.tudominio.com`
+   - En **Settings** → **Reverse Proxy**:
+     - **Type**: Proxy
+     - **Target**: `http://127.0.0.1:3000`
+   - CloudPanel maneja SSL automáticamente ✨
+
+4. **Listo**: `https://vigil.tudominio.com` apunta a Vigil.
+
+### Notas importantes
+
+1. **Google OAuth**: Con Docker, el callback URI cambia según tu dominio:
+   - Local: `http://localhost/api/auth/google/callback`
+   - Producción: `https://vigil.tudominio.com/api/auth/google/callback`
+   Debes registrar la URI correcta en Google Cloud Console.
+2. **Sin conflictos de puertos**: MongoDB y backend no exponen puertos al host. Solo el frontend usa `127.0.0.1:3000`.
+3. **Persistencia**: Los datos de MongoDB persisten en un volumen Docker (`mongo_data`).
+4. **Arquitectura**: CloudPanel (443) → proxy → vigil-frontend (3000) → proxy /api/* → vigil-backend (8001) → MongoDB (27017).
+
+---
+
+## 📦 Instalación Tradicional (Sin Docker)
+
 ## Requisitos del Servidor
 
 - **Sistema Operativo**: Ubuntu 20.04+ / Debian 11+

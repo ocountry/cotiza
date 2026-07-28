@@ -1,0 +1,115 @@
+# docker-compose.yml
+# ==============================
+# Vigil Price Tracking Application
+# 3 services: MongoDB, Backend (FastAPI), Frontend (nginx)
+# ==============================
+
+version: "3.8"
+
+services:
+  # ================================================================
+  # MongoDB Database
+  # ================================================================
+  mongodb:
+    image: mongo:7
+    container_name: vigil-mongodb
+    restart: unless-stopped
+    # ports: (no exponer — solo uso interno entre contenedores)
+    volumes:
+      # Persist data across container restarts
+      - mongo_data:/data/db
+    environment:
+      # Optional: enable MongoDB authentication
+      # MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      # MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-admin}
+      MONGO_INITDB_DATABASE: ${DB_NAME:-vigil_db}
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet 2>/dev/null || exit 1
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  # ================================================================
+  # Backend - FastAPI Application
+  # ================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vigil-backend
+    restart: unless-stopped
+    # ports: (no exponer — solo el frontend nginx necesita alcanzar al backend vía DNS interno)
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      # --- MongoDB ---
+      - MONGO_URL=mongodb://mongodb:27017
+      - DB_NAME=${DB_NAME:-vigil_db}
+
+      # --- Google OAuth (REQUIRED) ---
+      # Set these in a .env file or export them in your shell
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:?error}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:?error}
+      # For local Docker: http://localhost/api/auth/google/callback
+      # For production: https://yourdomain.com/api/auth/google/callback
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost/api/auth/google/callback}
+
+      # --- Frontend URL (for CORS and OAuth redirects) ---
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+
+      # --- Firecrawl (optional) ---
+      - FIRECRAWL_MODE=${FIRECRAWL_MODE:-cloud}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - FIRECRAWL_SELFHOSTED_URL=${FIRECRAWL_SELFHOSTED_URL:-}
+
+      # --- LLM (optional) ---
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_API_URL=${LLM_API_URL:-}
+
+      # --- Notifications (optional) ---
+      - NOTIFICATION_WEBHOOK_URL=${NOTIFICATION_WEBHOOK_URL:-}
+
+      # --- Price check interval ---
+      - PRICE_CHECK_INTERVAL_HOURS=${PRICE_CHECK_INTERVAL_HOURS:-12}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8001/api/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ================================================================
+  # Frontend - React SPA served by nginx
+  # ================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Empty string = relative API calls -> proxied by nginx
+        - REACT_APP_BACKEND_URL=
+    container_name: vigil-frontend
+    restart: unless-stopped
+    ports:
+      # CloudPanel proxy → este puerto (no en 80 para no conflictuar)
+      - "127.0.0.1:${VIGIL_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+# ================================================================
+# Volumes
+# ================================================================
+volumes:
+  mongo_data:
+    driver: local

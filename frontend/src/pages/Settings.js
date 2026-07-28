@@ -9,8 +9,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { 
-  TrendingDown, 
+import {
+  TrendingDown,
   ArrowLeft,
   Sun,
   Moon,
@@ -26,8 +26,7 @@ import {
   Save,
   Loader2
 } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { apiFetch } from '@/lib/api';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -53,7 +52,7 @@ export default function Settings() {
   const handleSaveNotifications = async () => {
     setSaving(true);
     try {
-      const response = await fetch(`${API}/auth/profile`, {
+      const response = await apiFetch('/auth/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
