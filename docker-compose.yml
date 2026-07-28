@@ -96,7 +96,7 @@ services:
     restart: unless-stopped
     ports:
       # CloudPanel proxy → este puerto (no en 80 para no conflictuar)
-      - "127.0.0.1:${VIGIL_PORT:-3000}:80"
+      - "127.0.0.1:${VIGIL_PORT:-3100}:80"
     depends_on:
       backend:
         condition: service_healthy
